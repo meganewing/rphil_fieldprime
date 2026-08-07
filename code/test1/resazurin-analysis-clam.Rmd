@@ -1,0 +1,308 @@
+---
+title: "Clam resazurin metabolic rate analysis"
+author: 
+date: '2026'
+params:
+  data_dir: "~/Documents/GitHub/rphil_fieldprime/data/test1/p"
+output:
+  github_document: null
+  md_document: default
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 6
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+This script analyzes resazurin assays for clam samples from BioTek Synergy HTX exports (24-well plate layout). Blank wells are located at A1, B4, C2, D5; all remaining wells contain clam samples.
+
+# Set up
+
+Set up workspace, set options, and load required packages.
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+Load libraries.
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+library(tools)
+```
+
+`knitr::knit()` does not populate `params`; `rmarkdown::render()` does. When knitting outside `render()`, use the same default as `params:` in the YAML header above.
+
+```{r include=FALSE}
+if (!exists("params", inherits = FALSE)) {
+  params <- list(data_dir = "~/Documents/GitHub/rphil_fieldprime/data/test1/p")
+}
+```
+
+# Define plate layout
+
+Wells containing blanks (all other wells on the 24-well plate are clam samples).
+
+```{r}
+blank_wells <- c("A1", "B4", "C2", "D5")
+```
+
+# Load data
+
+## Parse plate reader files
+
+Define a function to parse BioTek Synergy HTX .txt files. Each file may contain one or more plate readings separated by a "Results" header. For files with multiple readings the fluorescence values are averaged across readings. Unlike a design where only columns 1–2 are used, this parses every well on the plate (e.g. columns 1–6 for a 24-well plate) since blank wells are scattered across the layout rather than confined to one column.
+
+```{r}
+parse_plate_file <- function(file) {
+  lines <- readLines(file, warn = FALSE)
+  
+  # Find all lines that contain only "Results"
+  results_idx <- which(trimws(lines) == "Results")
+  
+  if (length(results_idx) == 0) {
+    stop(paste("No 'Results' section found in file:", file))
+  }
+  
+  readings_list <- list()
+  
+  for (idx in results_idx) {
+    # Line idx   = "Results"
+    # Line idx+1 = column header (tab-separated well columns; 6 cols for 24-well, 8 for 48-well)
+    # Data rows: A–D (24-well) or A–F (48-well), then blank line or end of section
+    j <- idx + 2
+    data_lines <- character()
+    while (j <= length(lines)) {
+      line <- lines[j]
+      if (nchar(trimws(line)) == 0) break
+      if (!grepl("^[A-Fa-f]\\t", line)) break
+      data_lines <- c(data_lines, line)
+      j <- j + 1
+    }
+
+    plate_data <- lapply(data_lines, function(row) {
+      parts <- unlist(strsplit(row, "\t"))
+      row_letter <- trimws(parts[1])
+      # Last field is filter label (e.g. 528/20,590/20); preceding fields are well values
+      n <- length(parts)
+      value_parts <- if (n >= 3) parts[seq.int(2, n - 1)] else parts[-1]
+      values <- suppressWarnings(as.numeric(value_parts))
+      data.frame(
+        well  = paste0(row_letter, seq_along(values)),
+        fluor = values,
+        stringsAsFactors = FALSE
+      )
+    })
+    
+    readings_list[[length(readings_list) + 1]] <- bind_rows(plate_data)
+  }
+  
+  # If multiple readings exist, average per well
+  if (length(readings_list) > 1) {
+    bind_rows(readings_list, .id = "reading") %>%
+      group_by(well) %>%
+      summarise(fluor = mean(fluor, na.rm = TRUE), .groups = "drop")
+  } else {
+    readings_list[[1]]
+  }
+}
+```
+
+Read and combine all plate files from `params$data_dir`. Filenames follow the pattern `<group>-t<hours>.txt`, e.g. `ctl-t0.txt`, `ctl-t3.25.txt`, `trt-t0.txt`. To reuse this script for a new run, just change `data_dir` in the YAML header (or pass it via `rmarkdown::render(..., params = list(data_dir = "..."))`) — everything else, including where figures are saved, follows automatically.
+
+```{r}
+folder_path <- path.expand(params$data_dir)
+
+file_list <- list.files(path = folder_path, pattern = "\\.txt$",
+                        full.names = TRUE, ignore.case = TRUE)
+
+if (length(file_list) == 0) {
+  stop("No .txt files found in ", folder_path, ". Check params$data_dir.")
+}
+
+# Mirror the data folder's path under a sibling "figures" directory,
+# e.g. .../data/test1/ctl -> .../figures/test1/ctl
+fig_dir <- sub("/data/", "/figures/", folder_path, fixed = TRUE)
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+
+data_list <- list()
+
+for (file in file_list) {
+  file_name <- file_path_sans_ext(basename(file))
+  fn_lower  <- tolower(file_name)
+
+  # <group>-t<hours>, e.g. ctl-t0, ctl-t3.25, trt-t0
+  m         <- str_match(fn_lower, "^(.+)-t([0-9.]+)$")
+  group     <- m[, 2]
+  timepoint <- as.numeric(m[, 3])
+  
+  parsed <- parse_plate_file(file) %>%
+    mutate(
+      group     = group,
+      timepoint = timepoint,
+      well_type = if_else(well %in% blank_wells, "blank", "sample")
+    )
+  
+  data_list[[file_name]] <- parsed
+}
+
+combined_data <- bind_rows(data_list)
+
+head(combined_data)
+```
+
+## Normalize to T0
+
+Divide each well's fluorescence by the T0 (baseline) value to express fluorescence as fold-change relative to the start of the assay.
+
+```{r}
+combined_data <- combined_data %>%
+  group_by(group, well) %>%
+  arrange(timepoint, .by_group = TRUE) %>%
+  mutate(fluor_norm = fluor / first(fluor)) %>%
+  ungroup()
+
+head(combined_data)
+```
+
+## Blank correction
+
+Calculate the mean normalized blank fluorescence per group and timepoint (using only wells A1, B4, C2, D5), then subtract it from each normalized sample well's fluorescence (adding 1 to keep values centred at 1 at T0).
+
+```{r}
+blanks_summary <- combined_data %>%
+  filter(well_type == "blank") %>%
+  group_by(group, timepoint) %>%
+  summarise(mean_blank_norm = mean(fluor_norm, na.rm = TRUE), .groups = "drop")
+
+combined_data <- left_join(combined_data, blanks_summary, by = c("group", "timepoint")) %>%
+  mutate(fluorescence_corr = fluor_norm - mean_blank_norm + 1)
+
+head(combined_data)
+```
+
+# Plotting
+
+Blank-corrected plots below use sample wells only, since blank wells are the correction reference rather than data of interest.
+
+```{r}
+sample_data <- combined_data %>% filter(well_type == "sample")
+```
+
+## Raw fluorescence over time
+
+```{r}
+plot_raw <- combined_data %>%
+  ggplot(aes(x = timepoint, y = fluor,
+             colour = group, group = interaction(group, well))) +
+  geom_point() +
+  geom_line() +
+  labs(
+    x      = "Timepoint (h)",
+    y      = "Raw Fluorescence",
+    colour = "Group"
+  ) +
+  theme_classic()
+
+plot_raw
+
+ggsave(plot_raw, filename = file.path(fig_dir, "raw_fluorescence.png"), width = 6, height = 4)
+```
+
+## Normalized fluorescence over time
+
+```{r}
+plot_norm <- combined_data %>%
+  ggplot(aes(x = timepoint, y = fluor_norm,
+             colour = group, group = interaction(group, well))) +
+  geom_point() +
+  geom_line() +
+  labs(
+    x      = "Timepoint (h)",
+    y      = "Fluorescence (fold change from T0)",
+    colour = "Group"
+  ) +
+  theme_classic()
+
+plot_norm
+
+ggsave(plot_norm, filename = file.path(fig_dir, "normalized_fluorescence.png"), width = 6, height = 4)
+```
+
+## Blank-corrected fluorescence over time
+
+```{r}
+plot_corr <- sample_data %>%
+  ggplot(aes(x = timepoint, y = fluorescence_corr,
+             colour = group, group = interaction(group, well))) +
+  geom_point() +
+  geom_line() +
+  labs(
+    x      = "Timepoint (h)",
+    y      = "Blank-corrected Fluorescence",
+    colour = "Group"
+  ) +
+  theme_classic()
+
+plot_corr
+
+ggsave(plot_corr, filename = file.path(fig_dir, "corrected_fluorescence.png"), width = 6, height = 4)
+```
+
+## Mean metabolic activity over time
+
+Plot group means ± SE (sample wells only).
+
+```{r}
+summary_data <- sample_data %>%
+  group_by(group, timepoint) %>%
+  summarise(
+    mean_fluor = mean(fluorescence_corr, na.rm = TRUE),
+    se_fluor   = sd(fluorescence_corr,   na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+plot_mean <- summary_data %>%
+  ggplot(aes(x = timepoint, y = mean_fluor,
+             colour = group, fill = group)) +
+  geom_ribbon(aes(ymin = mean_fluor - se_fluor, ymax = mean_fluor + se_fluor),
+              alpha = 0.2, colour = NA) +
+  geom_point() +
+  geom_line() +
+  labs(
+    x      = "Timepoint (h)",
+    y      = "Blank-corrected Fluorescence (mean ± SE)",
+    colour = "Group",
+    fill   = "Group"
+  ) +
+  theme_classic()
+
+plot_mean
+
+ggsave(plot_mean, filename = file.path(fig_dir, "mean_fluorescence.png"), width = 6, height = 4)
+```
+
+## Individual well trajectories faceted by group
+
+```{r}
+plot_facet <- sample_data %>%
+  ggplot(aes(x = timepoint, y = fluorescence_corr,
+             colour = well, group = well)) +
+  facet_wrap(~group) +
+  geom_point() +
+  geom_line() +
+  labs(
+    x      = "Timepoint (h)",
+    y      = "Blank-corrected Fluorescence",
+    colour = "Well"
+  ) +
+  theme_classic()
+
+plot_facet
+
+ggsave(plot_facet, filename = file.path(fig_dir, "individual_wells.png"), width = 8, height = 4)
+```
