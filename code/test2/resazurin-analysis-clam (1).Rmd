@@ -3,7 +3,9 @@ title: "Clam resazurin metabolic rate analysis"
 author: 
 date: '2026'
 params:
-  data_dir: "~/Documents/GitHub/rphil_fieldprime/data/test2/"
+  data_dir: "~/Documents/GitHub/rphil_fieldprime/data/test2"
+  treatment: "CC"
+  temperatures: !r c("32", "36", "40")
 output:
   github_document: null
   md_document: default
@@ -16,7 +18,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-This script analyzes resazurin assays for clam samples from BioTek Synergy HTX exports (24-well plate layout). Blank wells are located at A1, B4, C2, D5; all remaining wells contain clam samples.
+This script analyzes resazurin assays for clam samples from BioTek Synergy HTX exports (12-well plate layout: rows A–C, columns 1–4). Blank wells are located at A4, B4, C4 (column 4); all remaining wells contain clam samples. Multiple temperatures for the same treatment can be loaded and plotted together for comparison (one line per temperature).
 
 # Set up
 
@@ -39,23 +41,27 @@ library(tools)
 
 ```{r include=FALSE}
 if (!exists("params", inherits = FALSE)) {
-  params <- list(data_dir = "~/Documents/GitHub/rphil_fieldprime/data/test2")
+  params <- list(
+    data_dir     = "~/Documents/GitHub/rphil_fieldprime/data/test2",
+    treatment    = "CC",
+    temperatures = c("32", "36", "40")
+  )
 }
 ```
 
 # Define plate layout
 
-Wells containing blanks (all other wells on the 24-well plate are clam samples).
+Wells containing blanks (all other wells on the 12-well plate are clam samples). Blanks occupy column 4 (A4, B4, C4) — this plate only has rows A–C, so there is no D4.
 
 ```{r}
-blank_wells <- c("A4", "B4", "C4", "D4")
+blank_wells <- c("A4", "B4", "C4")
 ```
 
 # Load data
 
 ## Parse plate reader files
 
-Define a function to parse BioTek Synergy HTX .txt files. Each file may contain one or more plate readings separated by a "Results" header. For files with multiple readings the fluorescence values are averaged across readings. Unlike a design where only columns 1–2 are used, this parses every well on the plate (e.g. columns 1–6 for a 24-well plate) since blank wells are scattered across the layout rather than confined to one column.
+Define a function to parse BioTek Synergy HTX .txt files. Each file may contain one or more plate readings separated by a "Results" header. For files with multiple readings the fluorescence values are averaged across readings. Unlike a design where only columns 1–2 are used, this parses every well on the plate (columns 1–4 for this 12-well plate) since blank wells may be scattered across the layout rather than confined to one column.
 
 ```{r}
 parse_plate_file <- function(file) {
@@ -72,14 +78,14 @@ parse_plate_file <- function(file) {
   
   for (idx in results_idx) {
     # Line idx   = "Results"
-    # Line idx+1 = column header (tab-separated well columns; 6 cols for 24-well, 8 for 48-well)
-    # Data rows: A–D (24-well) or A–F (48-well), then blank line or end of section
+    # Line idx+1 = column header (tab-separated well columns; 4 cols for this 12-well plate)
+    # Data rows: A-C (12-well), then blank line or end of section
     j <- idx + 2
     data_lines <- character()
     while (j <= length(lines)) {
       line <- lines[j]
       if (nchar(trimws(line)) == 0) break
-      if (!grepl("^[A-Fa-f]\\t", line)) break
+      if (!grepl("^[A-Ca-c]\\t", line)) break
       data_lines <- c(data_lines, line)
       j <- j + 1
     }
@@ -112,16 +118,29 @@ parse_plate_file <- function(file) {
 }
 ```
 
-Read and combine all plate files from `params$data_dir`. Filenames follow the pattern `<group>-t<hours>.txt`, e.g. `ctl-t0.txt`, `ctl-t3.25.txt`, `trt-t0.txt`. To reuse this script for a new run, just change `data_dir` in the YAML header (or pass it via `rmarkdown::render(..., params = list(data_dir = "..."))`) — everything else, including where figures are saved, follows automatically.
+Read and combine all plate files from `params$data_dir`. Filenames follow the pattern `<treatment>-<temperature>-T<hours>.txt`, e.g. `CC-11-T0.txt`, `CC-28-T3.25.txt`, `CC-40-T0.txt`. `params$temperatures` can hold one or several temperatures (e.g. `c("11", "28", "40")`) — each becomes its own group, so a single run can load and compare multiple temperatures on one plot. To run on a new set, just change `treatment` and/or `temperatures` in the YAML header (or pass them via `rmarkdown::render(..., params = list(...))`) — the file filter, group labels, and figure output all follow automatically.
 
 ```{r}
-folder_path <- path.expand(params$data_dir)
+folder_path   <- path.expand(params$data_dir)
+file_prefixes <- paste0(params$treatment, "-", params$temperatures, "-T")
+group_labels  <- paste0(params$treatment, "-", params$temperatures)
 
 file_list <- list.files(path = folder_path, pattern = "\\.txt$",
                         full.names = TRUE, ignore.case = TRUE)
 
 if (length(file_list) == 0) {
   stop("No .txt files found in ", folder_path, ". Check params$data_dir.")
+}
+
+# Keep only files matching one of the current treatment/temperature naming
+# schemes, e.g. "CC-11-T*.txt", "CC-28-T*.txt", "CC-40-T*.txt"
+matches_any_prefix <- function(fname) any(startsWith(fname, file_prefixes))
+file_list <- file_list[sapply(basename(file_list), matches_any_prefix)]
+
+if (length(file_list) == 0) {
+  stop("No files matching '", paste(file_prefixes, collapse = "', '"),
+       "' (+ '*.txt') found in ", folder_path,
+       ". Check params$treatment / params$temperatures.")
 }
 
 # Mirror the data folder's path under a sibling "figures" directory,
@@ -133,16 +152,22 @@ data_list <- list()
 
 for (file in file_list) {
   file_name <- file_path_sans_ext(basename(file))
-  fn_lower  <- tolower(file_name)
 
-  # <group>-t<hours>, e.g. ctl-t0, ctl-t3.25, trt-t0
-  m         <- str_match(fn_lower, "^(.+)-t([0-9.]+)$")
-  group     <- m[, 2]
-  timepoint <- as.numeric(m[, 3])
+  # Identify which treatment/temperature prefix this file belongs to
+  prefix_idx <- which(startsWith(file_name, file_prefixes))[1]
+  prefix      <- file_prefixes[prefix_idx]
+  group_label <- group_labels[prefix_idx]
+
+  timepoint_pattern <- paste0("^", prefix, "([0-9.]+)$")
+  m <- str_match(file_name, timepoint_pattern)
+  if (is.na(m[, 1])) {
+    stop("Filename '", file_name, "' does not match '", prefix, "<hours>'.")
+  }
+  timepoint <- as.numeric(m[, 2])
   
   parsed <- parse_plate_file(file) %>%
     mutate(
-      group     = group,
+      group     = group_label,
       timepoint = timepoint,
       well_type = if_else(well %in% blank_wells, "blank", "sample")
     )
@@ -261,11 +286,40 @@ Plot group means ± SE (sample wells only).
 summary_data <- sample_data %>%
   group_by(group, timepoint) %>%
   summarise(
+    n_wells    = n(),
     mean_fluor = mean(fluorescence_corr, na.rm = TRUE),
     se_fluor   = sd(fluorescence_corr,   na.rm = TRUE) / sqrt(n()),
     .groups = "drop"
   )
+```
 
+**Diagnostics:** run this if `plot_mean` warns about missing/removed rows or `-Inf` — it flags exactly which group/timepoint combinations have too few wells or non-finite values feeding the ribbon.
+
+```{r}
+problem_rows <- summary_data %>%
+  filter(n_wells < 2 | !is.finite(mean_fluor) | !is.finite(se_fluor))
+
+if (nrow(problem_rows) > 0) {
+  message("Found ", nrow(problem_rows), " group/timepoint combo(s) with n_wells < 2 or non-finite values:")
+  print(problem_rows)
+  
+  # Check for zero or non-finite baseline (T0) readings, a common cause of Inf downstream
+  baseline_check <- combined_data %>%
+    group_by(group, well) %>%
+    arrange(timepoint, .by_group = TRUE) %>%
+    summarise(t0_fluor = first(fluor), .groups = "drop") %>%
+    filter(t0_fluor == 0 | !is.finite(t0_fluor))
+  
+  if (nrow(baseline_check) > 0) {
+    message("Wells with a zero/non-finite baseline (T0) reading — these will produce Inf/NA in fluor_norm:")
+    print(baseline_check)
+  }
+} else {
+  message("No problem rows found — all group/timepoint combinations have >= 2 wells and finite values.")
+}
+```
+
+```{r}
 plot_mean <- summary_data %>%
   ggplot(aes(x = timepoint, y = mean_fluor,
              colour = group, fill = group)) +
