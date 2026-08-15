@@ -2,7 +2,7 @@ library(tidyverse)
 library(scales)
 
 dat <- read.csv(
-  "data/LR_manila-40C.csv",
+  "data/WC_manila-40C.csv",
   header = TRUE,
   check.names = FALSE,
   stringsAsFactors = FALSE
@@ -31,7 +31,7 @@ for (i in seq_along(time_rows)) {
   # Find all plate labels
   plate_cols <- which(
     grepl(
-      "^LR-[A-Z]{2}[12]-40$",
+      "^WC-[A-Z]{2}[12]-40$",
       dat[plate_row, ],
       ignore.case = TRUE
     )
@@ -44,7 +44,7 @@ for (i in seq_along(time_rows)) {
     # Treatment: CC, EE, CP, or EP
     treatment <- str_extract(
       plate_name,
-      "(?<=LR-)[A-Z]{2}"
+      "(?<=WC-)[A-Z]{2}"
     )
     
     # Replicate: 1 or 2
@@ -216,7 +216,7 @@ ggplot(
 
 # Save figure as a high-resolution PNG
 ggsave(
-  "figures/LR_survival/clam_mortality_40C.png",
+  "figures/WC_survival/clam_mortality_40C.png",
   width = 12,
   height = 6,
   dpi = 300
