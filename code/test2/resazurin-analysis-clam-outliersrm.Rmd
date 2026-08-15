@@ -218,26 +218,6 @@ Blank-corrected plots below use sample wells only, since blank wells are the cor
 sample_data_all <- combined_data %>% filter(well_type == "sample")
 ```
 
-## Remove outliers
-
-Drop the 2 wells with the highest blank-corrected fluorescence within each group at each timepoint (e.g. from the 9 sample wells per group/timepoint on this 12-well plate), before using the data for plots and summary statistics below. Adjust `n_outliers` if you want to drop a different number, or change the `group_by()` to `group_by(group)` if you'd rather remove the 2 highest per group across all timepoints instead of per group/timepoint.
-
-```{r}
-n_outliers <- 2
-
-sample_data <- sample_data_all %>%
-  group_by(group, timepoint) %>%
-  arrange(desc(fluorescence_corr), .by_group = TRUE) %>%
-  slice(-seq_len(min(n_outliers, n()))) %>%
-  ungroup()
-
-message(
-  "Removed ", nrow(sample_data_all) - nrow(sample_data),
-  " outlier well(s) (up to ", n_outliers, " per group/timepoint) out of ",
-  nrow(sample_data_all), " total sample wells."
-)
-```
-
 ## Raw fluorescence over time
 
 ```{r}
@@ -300,6 +280,28 @@ ggsave(plot_corr, filename = file.path(fig_dir, "corrected_fluorescence.png"), w
 
 ## Mean metabolic activity over time
 
+## Remove outliers
+
+Drop the 2 wells with the highest blank-corrected fluorescence within each group at each timepoint (e.g. from the 9 sample wells per group/timepoint on this 12-well plate), before using the data for plots and summary statistics below. Adjust `n_outliers` if you want to drop a different number, or change the `group_by()` to `group_by(group)` if you'd rather remove the 2 highest per group across all timepoints instead of per group/timepoint.
+
+```{r}
+n_outliers <- 1
+
+sample_data <- sample_data_all %>%
+  group_by(group, timepoint) %>%
+  arrange(desc(fluorescence_corr), .by_group = TRUE) %>%
+  slice(-seq_len(min(n_outliers, n()))) %>%
+  ungroup()
+
+message(
+  "Removed ", nrow(sample_data_all) - nrow(sample_data),
+  " outlier well(s) (up to ", n_outliers, " per group/timepoint) out of ",
+  nrow(sample_data_all), " total sample wells."
+)
+```
+
+## 
+
 Plot group means ± SE (sample wells only).
 
 ```{r}
@@ -311,32 +313,6 @@ summary_data <- sample_data %>%
     se_fluor   = sd(fluorescence_corr,   na.rm = TRUE) / sqrt(n()),
     .groups = "drop"
   )
-```
-
-**Diagnostics:** run this if `plot_mean` warns about missing/removed rows or `-Inf` — it flags exactly which group/timepoint combinations have too few wells or non-finite values feeding the ribbon.
-
-```{r}
-problem_rows <- summary_data %>%
-  filter(n_wells < 2 | !is.finite(mean_fluor) | !is.finite(se_fluor))
-
-if (nrow(problem_rows) > 0) {
-  message("Found ", nrow(problem_rows), " group/timepoint combo(s) with n_wells < 2 or non-finite values:")
-  print(problem_rows)
-  
-  # Check for zero or non-finite baseline (T0) readings, a common cause of Inf downstream
-  baseline_check <- combined_data %>%
-    group_by(group, well) %>%
-    arrange(timepoint, .by_group = TRUE) %>%
-    summarise(t0_fluor = first(fluor), .groups = "drop") %>%
-    filter(t0_fluor == 0 | !is.finite(t0_fluor))
-  
-  if (nrow(baseline_check) > 0) {
-    message("Wells with a zero/non-finite baseline (T0) reading — these will produce Inf/NA in fluor_norm:")
-    print(baseline_check)
-  }
-} else {
-  message("No problem rows found — all group/timepoint combinations have >= 2 wells and finite values.")
-}
 ```
 
 ```{r}
