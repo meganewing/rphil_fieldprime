@@ -2,7 +2,7 @@ library(tidyverse)
 library(scales)
 
 dat <- read.csv(
-  "data/AP_cockles-26C.csv",
+  "data/WC_manila-30C.csv",
   header = TRUE,
   check.names = FALSE,
   stringsAsFactors = FALSE
@@ -31,7 +31,7 @@ for (i in seq_along(time_rows)) {
   # Find all plate labels
   plate_cols <- which(
     grepl(
-      "^APC-[A-Z]{2}[12]-26$",
+      "^WC-[A-Z]{2}[12]-30$",
       dat[plate_row, ],
       ignore.case = TRUE
     )
@@ -44,14 +44,14 @@ for (i in seq_along(time_rows)) {
     # Treatment: CC, EE, CP, or EP
     treatment <- str_extract(
       plate_name,
-      "(?<=APC-)[A-Z]{2}"
+      "(?<=WC-)[A-Z]{2}"
     )
     
     # Replicate: 1 or 2
     replicate <- as.numeric(
       str_extract(
         plate_name,
-        "[12](?=-26)"
+        "[12](?=-30)"
       )
     )
     
@@ -163,7 +163,7 @@ ggplot(
   ) +
   
   labs(
-    x = "Time at 26 °C (hours)",
+    x = "Time at 30 °C (hours)",
     y = "Cumulative mortality",
     color = "Treatment"
   ) +
@@ -205,7 +205,7 @@ ggplot(
     breaks = sort(unique(mortality_summary$time_hr))
   ) +
   labs(
-    x = "Time at 26 °C (hours)",
+    x = "Time at 30 °C (hours)",
     y = "Cumulative mortality",
     color = "Treatment"
   ) +
@@ -216,7 +216,7 @@ ggplot(
 
 # Save figure as a high-resolution PNG
 ggsave(
-  "figures/APC_survival/clam_mortality_26C.png",
+  "figures/WC_survival/clam_mortality_30C.png",
   width = 12,
   height = 6,
   dpi = 300
