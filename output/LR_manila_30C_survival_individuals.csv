@@ -1,0 +1,129 @@
+individual_id,treatment,replicate,time,status,immune_priming,thermal_priming,treatment_label
+CC_1_A2,CC,1,97,1,No,No,Control
+CC_1_A3,CC,1,166,1,No,No,Control
+CC_1_A4,CC,1,142,1,No,No,Control
+CC_1_A5,CC,1,97,1,No,No,Control
+CC_1_B2,CC,1,166,1,No,No,Control
+CC_1_B3,CC,1,142,1,No,No,Control
+CC_1_B4,CC,1,190,1,No,No,Control
+CC_1_B5,CC,1,49,1,No,No,Control
+CC_1_C2,CC,1,120,1,No,No,Control
+CC_1_C3,CC,1,97,1,No,No,Control
+CC_1_C4,CC,1,120,1,No,No,Control
+CC_1_C5,CC,1,120,1,No,No,Control
+CC_1_D2,CC,1,166,1,No,No,Control
+CC_1_D3,CC,1,142,1,No,No,Control
+CC_1_D4,CC,1,120,1,No,No,Control
+CC_1_D5,CC,1,120,1,No,No,Control
+CC_2_A2,CC,2,166,1,No,No,Control
+CC_2_A3,CC,2,166,1,No,No,Control
+CC_2_A4,CC,2,142,1,No,No,Control
+CC_2_A5,CC,2,190,1,No,No,Control
+CC_2_B2,CC,2,120,1,No,No,Control
+CC_2_B3,CC,2,166,1,No,No,Control
+CC_2_B4,CC,2,120,1,No,No,Control
+CC_2_B5,CC,2,190,1,No,No,Control
+CC_2_C2,CC,2,142,1,No,No,Control
+CC_2_C3,CC,2,97,1,No,No,Control
+CC_2_C4,CC,2,120,1,No,No,Control
+CC_2_C5,CC,2,120,1,No,No,Control
+CC_2_D2,CC,2,166,1,No,No,Control
+CC_2_D3,CC,2,120,1,No,No,Control
+CC_2_D4,CC,2,166,1,No,No,Control
+CC_2_D5,CC,2,120,1,No,No,Control
+CP_1_A2,CP,1,166,1,Yes,No,Immune priming
+CP_1_A3,CP,1,120,1,Yes,No,Immune priming
+CP_1_A4,CP,1,190,1,Yes,No,Immune priming
+CP_1_A5,CP,1,166,1,Yes,No,Immune priming
+CP_1_B2,CP,1,120,1,Yes,No,Immune priming
+CP_1_B3,CP,1,166,1,Yes,No,Immune priming
+CP_1_B4,CP,1,142,1,Yes,No,Immune priming
+CP_1_B5,CP,1,166,1,Yes,No,Immune priming
+CP_1_C2,CP,1,120,1,Yes,No,Immune priming
+CP_1_C3,CP,1,97,1,Yes,No,Immune priming
+CP_1_C4,CP,1,190,1,Yes,No,Immune priming
+CP_1_C5,CP,1,120,1,Yes,No,Immune priming
+CP_1_D2,CP,1,142,1,Yes,No,Immune priming
+CP_1_D3,CP,1,120,1,Yes,No,Immune priming
+CP_1_D4,CP,1,120,1,Yes,No,Immune priming
+CP_1_D5,CP,1,190,1,Yes,No,Immune priming
+CP_2_A2,CP,2,120,1,Yes,No,Immune priming
+CP_2_A3,CP,2,166,1,Yes,No,Immune priming
+CP_2_A4,CP,2,190,1,Yes,No,Immune priming
+CP_2_A5,CP,2,97,1,Yes,No,Immune priming
+CP_2_B2,CP,2,190,1,Yes,No,Immune priming
+CP_2_B3,CP,2,120,1,Yes,No,Immune priming
+CP_2_B4,CP,2,166,1,Yes,No,Immune priming
+CP_2_B5,CP,2,166,1,Yes,No,Immune priming
+CP_2_C2,CP,2,120,1,Yes,No,Immune priming
+CP_2_C3,CP,2,166,1,Yes,No,Immune priming
+CP_2_C4,CP,2,97,1,Yes,No,Immune priming
+CP_2_C5,CP,2,16,1,Yes,No,Immune priming
+CP_2_D2,CP,2,142,1,Yes,No,Immune priming
+CP_2_D3,CP,2,166,1,Yes,No,Immune priming
+CP_2_D4,CP,2,120,1,Yes,No,Immune priming
+CP_2_D5,CP,2,73,1,Yes,No,Immune priming
+EE_1_A2,EE,1,120,1,No,Yes,Thermal priming
+EE_1_A3,EE,1,142,1,No,Yes,Thermal priming
+EE_1_A4,EE,1,142,1,No,Yes,Thermal priming
+EE_1_A5,EE,1,120,1,No,Yes,Thermal priming
+EE_1_B2,EE,1,166,1,No,Yes,Thermal priming
+EE_1_B3,EE,1,120,1,No,Yes,Thermal priming
+EE_1_B4,EE,1,190,1,No,Yes,Thermal priming
+EE_1_B5,EE,1,142,1,No,Yes,Thermal priming
+EE_1_C2,EE,1,120,1,No,Yes,Thermal priming
+EE_1_C3,EE,1,120,1,No,Yes,Thermal priming
+EE_1_C4,EE,1,120,1,No,Yes,Thermal priming
+EE_1_C5,EE,1,142,1,No,Yes,Thermal priming
+EE_1_D2,EE,1,142,1,No,Yes,Thermal priming
+EE_1_D3,EE,1,142,1,No,Yes,Thermal priming
+EE_1_D4,EE,1,190,1,No,Yes,Thermal priming
+EE_1_D5,EE,1,120,1,No,Yes,Thermal priming
+EE_2_A2,EE,2,120,1,No,Yes,Thermal priming
+EE_2_A3,EE,2,97,1,No,Yes,Thermal priming
+EE_2_A4,EE,2,166,1,No,Yes,Thermal priming
+EE_2_A5,EE,2,97,1,No,Yes,Thermal priming
+EE_2_B2,EE,2,166,1,No,Yes,Thermal priming
+EE_2_B3,EE,2,120,1,No,Yes,Thermal priming
+EE_2_B4,EE,2,142,1,No,Yes,Thermal priming
+EE_2_B5,EE,2,142,1,No,Yes,Thermal priming
+EE_2_C2,EE,2,142,1,No,Yes,Thermal priming
+EE_2_C3,EE,2,142,1,No,Yes,Thermal priming
+EE_2_C4,EE,2,142,1,No,Yes,Thermal priming
+EE_2_C5,EE,2,190,1,No,Yes,Thermal priming
+EE_2_D2,EE,2,120,1,No,Yes,Thermal priming
+EE_2_D3,EE,2,166,1,No,Yes,Thermal priming
+EE_2_D4,EE,2,166,1,No,Yes,Thermal priming
+EE_2_D5,EE,2,17,1,No,Yes,Thermal priming
+EP_1_A2,EP,1,190,1,Yes,Yes,Thermal + immune priming
+EP_1_A3,EP,1,120,1,Yes,Yes,Thermal + immune priming
+EP_1_A4,EP,1,120,1,Yes,Yes,Thermal + immune priming
+EP_1_A5,EP,1,142,1,Yes,Yes,Thermal + immune priming
+EP_1_B2,EP,1,120,1,Yes,Yes,Thermal + immune priming
+EP_1_B3,EP,1,120,1,Yes,Yes,Thermal + immune priming
+EP_1_B4,EP,1,120,1,Yes,Yes,Thermal + immune priming
+EP_1_B5,EP,1,120,1,Yes,Yes,Thermal + immune priming
+EP_1_C2,EP,1,166,1,Yes,Yes,Thermal + immune priming
+EP_1_C3,EP,1,142,1,Yes,Yes,Thermal + immune priming
+EP_1_C4,EP,1,190,1,Yes,Yes,Thermal + immune priming
+EP_1_C5,EP,1,120,1,Yes,Yes,Thermal + immune priming
+EP_1_D2,EP,1,190,1,Yes,Yes,Thermal + immune priming
+EP_1_D3,EP,1,190,1,Yes,Yes,Thermal + immune priming
+EP_1_D4,EP,1,190,1,Yes,Yes,Thermal + immune priming
+EP_1_D5,EP,1,166,1,Yes,Yes,Thermal + immune priming
+EP_2_A2,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_A3,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_A4,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_A5,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_B2,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_B3,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_B4,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_B5,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_C2,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_C3,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_C4,EP,2,190,1,Yes,Yes,Thermal + immune priming
+EP_2_C5,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_D2,EP,2,166,1,Yes,Yes,Thermal + immune priming
+EP_2_D3,EP,2,142,1,Yes,Yes,Thermal + immune priming
+EP_2_D4,EP,2,190,1,Yes,Yes,Thermal + immune priming
+EP_2_D5,EP,2,142,1,Yes,Yes,Thermal + immune priming

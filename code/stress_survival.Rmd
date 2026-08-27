@@ -1,0 +1,128 @@
+---
+title: Stress lab survival analysis
+author: "AS Huffmyer"
+date: '2026'
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: 6
+    toc_float: yes
+  pdf_document:
+    keep_tex: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+# Set up 
+
+Set up workspace, set options, and load required packages.    
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+Load libraries. 
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(survival)
+library(readxl)
+library(ggsurvfit)
+library(gtsummary)
+library(cardx)
+library(cowplot)
+```
+
+# Read in data 
+
+Read in data. 
+```{r}
+data<-read_csv("data/LR_manila-40C_mortality.csv")
+```
+
+Turn into long format. 
+```{r}
+data<-data%>%
+  pivot_longer(names_to="time", values_to="status", cols=`0`:`54`)%>%
+  mutate(time=as.numeric(time))
+```
+
+## Generate Kaplan Meier survival curves
+
+```{r}
+s1 <- survival::survfit(Surv(time, status) ~ Hardening_Treatment+Family, data = data)
+str(s1)
+```
+
+Plot the survival function
+```{r}
+ggsurvfit::survfit2(Surv(time, status) ~ Hardening_Treatment+Family, data = data) %>% 
+  ggsurvfit::ggsurvfit() +
+  labs(
+    x = "Hours",
+    y = "Survival probability"
+  )
+```
+
+Estimate survival at 24 hours. 
+```{r}
+summary(survival::survfit(Surv(time, status) ~ Hardening_Treatment+Family, data = data), times = 24)
+```
+
+Use a log rank model to determine statistical differences in curves. 
+```{r}
+survival::survdiff(Surv(time, status) ~ Hardening_Treatment+Family, data = data)
+```
+
+Analyze again with a Cox proportional hazards model. 
+```{r}
+survival::coxph(Surv(time, status) ~ Hardening_Treatment*Family, data = data)
+
+survival::coxph(Surv(time, status) ~ Hardening_Treatment*Family, data = data) %>% 
+  tbl_regression(exp = TRUE) 
+```
+
+## Generate plots 
+ 
+Set theme. 
+```{r}
+my_theme<-theme_classic()+
+  theme(
+    axis.title.y = element_text(size = 14, color = "black"),
+    axis.text.y = element_text(size=12, color = "black"),
+    axis.text.x = element_text(size=12, color = "black"),
+    axis.title.x =element_text(size = 14, color = "black"),
+    legend.position = "none")
+```
+
+Stress treatment
+```{r}
+#options("ggsurvfit.switch-color-linetype" = TRUE)
+plot1<-ggsurvfit::survfit2(Surv(time, status) ~ Hardening_Treatment, data = data) %>% 
+  ggsurvfit::ggsurvfit() +
+  labs(
+    x = "Hours",
+    y = "Survival probability",
+    title=""
+  )+
+  ylim(0,1)+
+  my_theme+
+  #scale_linetype_manual(values=c("solid", "dashed"))+
+  scale_colour_manual(values=c("darkgray", "orange"))+
+  theme(legend.position="right");plot1
+```
+
+Stress treatment
+```{r}
+#options("ggsurvfit.switch-color-linetype" = TRUE)
+plot2<-ggsurvfit::survfit2(Surv(time, status) ~ Family, data = data) %>% 
+  ggsurvfit::ggsurvfit() +
+  labs(
+    x = "Hours",
+    y = "Survival probability",
+    title=""
+  )+
+  ylim(0,1)+
+  my_theme+
+  theme(legend.position="right");plot2
+```

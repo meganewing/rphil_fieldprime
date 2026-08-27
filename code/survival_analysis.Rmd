@@ -1,0 +1,284 @@
+---
+title: "Manila Clam Survival Analysis"
+author: ""
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 6
+    toc_float: true
+editor_options:
+  chunk_output_type: console
+---
+
+This script analyzes survival assay data for lab-reared Manila clams in a factorial immune priming × heat priming experiment. Mortality (0 = alive, 1 = dead) is modeled over time using mixed-effects binomial logistic regression, with silo, field replicate, and assay plate included as random effects.
+
+# Setup
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(lme4)
+library(car)
+library(emmeans)
+library(DHARMa)
+library(ggplot2)
+library(cowplot)
+library(lmerTest)
+```
+
+# Load data
+
+```{r load}
+# ── CONFIG ────────────────────────────────────────────────────────────────────
+# Point this at your transformed mortality CSV (output of transform_mortality.R).
+# If running multiple assay temperatures, either combine files before loading
+# or re-run this script once per file.
+DATA_FILE <- "data/LR_manila-40C_mortality.csv"
+# ─────────────────────────────────────────────────────────────────────────────
+
+surv <- read_csv(DATA_FILE)
+
+# Confirm structure
+glimpse(surv)
+```
+
+# Wrangle
+
+Pivot timepoint columns to long format so each row is one clam × one timepoint.
+
+```{r wrangle}
+# Identify timepoint columns (anything ending in "HR")
+tp_cols <- names(surv)[grepl("HR$", names(surv), ignore.case = TRUE)]
+
+surv_long <- surv %>%
+  pivot_longer(
+    cols      = all_of(tp_cols),
+    names_to  = "timepoint",
+    values_to = "mortality"
+  ) %>%
+  mutate(
+    # Parse numeric hours from labels like "4HR", "29.5HR"
+    hours = as.numeric(sub("HR$", "", timepoint, ignore.case = TRUE)),
+
+    # Ensure factor variables are correctly typed
+    Immune_Priming    = factor(Immune_Priming,    levels = c("No", "Yes")),
+    Heat_Priming      = factor(Heat_Priming,      levels = c("No", "Yes")),
+    Silo_Replicate    = factor(Silo_Replicate),
+    Field_Replicate   = factor(Field_Replicate),
+    Assay_Replicate   = factor(Assay_Replicate),
+    timepoint         = factor(timepoint, levels = tp_cols),  # preserve file order
+
+    # Mortality must be integer 0/1 for binomial family
+    mortality = as.integer(mortality)
+  )
+
+# Quick sanity check
+surv_long %>%
+  count(Immune_Priming, Heat_Priming, Silo_Replicate, Field_Replicate, Assay_Replicate) %>%
+  print(n = Inf)
+```
+
+# Analysis: full time series
+
+Mixed-effects binomial logistic regression across all timepoints.
+
+Fixed effects: `Immune_Priming * Heat_Priming * hours`\
+Random effects: `Silo_Replicate`, `Field_Replicate` (nested in silo), `Assay_Replicate` (plate)
+
+```{r model-timeseries}
+model_ts <- glmer(
+  mortality ~ Immune_Priming * Heat_Priming * hours +
+    (1 | Silo_Replicate) +
+    (1 | Silo_Replicate:Field_Replicate) +
+    (1 | Assay_Replicate),
+  family = binomial(link = "logit"),
+  data   = surv_long,
+  control = glmerControl(optimizer = "bobyqa",
+                         optCtrl   = list(maxfun = 2e5))
+)
+
+summary(model_ts)
+Anova(model_ts, type = "II")
+```
+
+Check significance of random effects.
+
+```{r rand-effects-ts}
+model_no_silo  <- update(model_ts, . ~ . - (1 | Silo_Replicate))
+model_no_field <- update(model_ts, . ~ . - (1 | Silo_Replicate:Field_Replicate))
+model_no_assay <- update(model_ts, . ~ . - (1 | Assay_Replicate))
+
+anova(model_ts, model_no_silo)
+anova(model_ts, model_no_field)
+anova(model_ts, model_no_assay)
+
+VarCorr(model_ts)
+```
+
+Post-hoc: pairwise comparisons of treatment combinations at each timepoint.
+
+```{r posthoc-ts}
+emm_ts <- emmeans(model_ts, ~ Immune_Priming * Heat_Priming | hours, type = "response")
+pairs(emm_ts)
+```
+
+## Plot: predicted mortality over time
+
+```{r plot-timeseries}
+surv_long$predicted_mortality <- predict(model_ts, type = "response")
+
+plot_ts <- ggplot(surv_long,
+                  aes(x     = hours,
+                      y     = predicted_mortality,
+                      color = interaction(Immune_Priming, Heat_Priming),
+                      fill  = interaction(Immune_Priming, Heat_Priming),
+                      group = interaction(Immune_Priming, Heat_Priming))) +
+  geom_point(aes(y = mortality), alpha = 0.3,
+             position = position_jitter(height = 0.03)) +
+  geom_smooth(method = "glm",
+              method.args = list(family = "binomial"),
+              se = TRUE, alpha = 0.15) +
+  scale_colour_manual(
+    values = c("No.No"   = "grey40",
+               "Yes.No"  = "steelblue",
+               "No.Yes"  = "coral2",
+               "Yes.Yes" = "mediumpurple3"),
+    labels = c("No.No"   = "Control (CC)",
+               "Yes.No"  = "Immune only (CP)",
+               "No.Yes"  = "Heat only (EE)",
+               "Yes.Yes" = "Immune + Heat (EP)"),
+    name = "Treatment"
+  ) +
+  scale_fill_manual(
+    values = c("No.No"   = "grey40",
+               "Yes.No"  = "steelblue",
+               "No.Yes"  = "coral2",
+               "Yes.Yes" = "mediumpurple3"),
+    labels = c("No.No"   = "Control (CC)",
+               "Yes.No"  = "Immune only (CP)",
+               "No.Yes"  = "Heat only (EE)",
+               "Yes.Yes" = "Immune + Heat (EP)"),
+    name = "Treatment"
+  ) +
+  labs(
+    title = paste("Predicted Mortality over Time —", unique(surv_long$Assay_Temp)),
+    x     = "Hours",
+    y     = "Probability of Mortality"
+  ) +
+  theme_classic(base_size = 13); plot_ts
+
+ggsave(plot_ts,
+       filename = "figures/survival_timeseries.png",
+       width = 8, height = 5)
+```
+
+# Analysis: final timepoint only
+
+Isolate the last recorded timepoint and refit a simpler model for a clean endpoint comparison.
+
+```{r model-final}
+final_tp <- max(surv_long$hours)
+
+surv_final <- surv_long %>% filter(hours == final_tp)
+
+model_final <- glmer(
+  mortality ~ Immune_Priming * Heat_Priming +
+    (1 | Silo_Replicate) +
+    (1 | Silo_Replicate:Field_Replicate) +
+    (1 | Assay_Replicate),
+  family = binomial(link = "logit"),
+  data   = surv_final
+)
+
+summary(model_final)
+Anova(model_final, type = "II")
+```
+
+## Overdispersion & zero-inflation checks
+
+```{r diagnostics}
+sim <- simulateResiduals(model_final)
+testDispersion(sim)
+testZeroInflation(sim)
+```
+
+## Random effects significance
+
+```{r rand-effects-final}
+rand(model_final)
+```
+
+## Post-hoc comparisons
+
+```{r posthoc-final}
+# Treatment combinations within each priming factor
+emm_immune <- emmeans(model_final, ~ Immune_Priming | Heat_Priming, type = "response")
+pairs(emm_immune)
+
+emm_heat <- emmeans(model_final, ~ Heat_Priming | Immune_Priming, type = "response")
+pairs(emm_heat)
+
+# All four treatment combinations
+emm_all <- emmeans(model_final, ~ Immune_Priming * Heat_Priming, type = "response")
+pairs(emm_all)
+emm_df <- as.data.frame(emm_all)
+emm_df
+```
+
+## Plot: predicted mortality at final timepoint
+
+```{r plot-final}
+surv_final$predicted_mortality <- predict(model_final, type = "response")
+
+plot_final <- ggplot(surv_final,
+                     aes(x     = interaction(Immune_Priming, Heat_Priming),
+                         y     = predicted_mortality,
+                         color = interaction(Immune_Priming, Heat_Priming),
+                         fill  = interaction(Immune_Priming, Heat_Priming))) +
+  geom_jitter(aes(y = mortality), width = 0.2, height = 0.03, alpha = 0.4) +
+  geom_boxplot(alpha = 0.3, outlier.shape = NA) +
+  scale_colour_manual(
+    values = c("No.No"   = "grey40",
+               "Yes.No"  = "steelblue",
+               "No.Yes"  = "coral2",
+               "Yes.Yes" = "mediumpurple3"),
+    labels = c("No.No"   = "Control (CC)",
+               "Yes.No"  = "Immune only (CP)",
+               "No.Yes"  = "Heat only (EE)",
+               "Yes.Yes" = "Immune + Heat (EP)"),
+    name = "Treatment"
+  ) +
+  scale_fill_manual(
+    values = c("No.No"   = "grey40",
+               "Yes.No"  = "steelblue",
+               "No.Yes"  = "coral2",
+               "Yes.Yes" = "mediumpurple3"),
+    labels = c("No.No"   = "Control (CC)",
+               "Yes.No"  = "Immune only (CP)",
+               "No.Yes"  = "Heat only (EE)",
+               "Yes.Yes" = "Immune + Heat (EP)"),
+    name = "Treatment"
+  ) +
+  scale_x_discrete(
+    labels = c("No.No"   = "Control\n(CC)",
+               "Yes.No"  = "Immune only\n(CP)",
+               "No.Yes"  = "Heat only\n(EE)",
+               "Yes.Yes" = "Immune + Heat\n(EP)")
+  ) +
+  labs(
+    title = paste0("Predicted Mortality at ", final_tp, " h — ", unique(surv_long$Assay_Temp)),
+    x     = "Treatment",
+    y     = "Probability of Mortality"
+  ) +
+  theme_classic(base_size = 13) +
+  theme(legend.position = "none"); plot_final
+
+ggsave(plot_final,
+       filename = "figures/survival_final_timepoint.png",
+       width = 7, height = 5)
+```
