@@ -6,8 +6,6 @@ Repository for field priming project with Manila clams (Ruditapes philippinarum)
 
 **`data/`** contains data files (eg., survival assay data, raw fluroscence reads, formatted datafiles, etc)
 
-`code/` includes scripts for analyzing the data
-
-`figures/` contains graphs (will be folded into output subdir at a later date)
+`code/` data analysis
 
 `output/` output from scripts
