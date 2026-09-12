@@ -1,0 +1,12 @@
+test,method,effect_size,min_n_per_cell,note
+Overall 2×2 ANOVA,Parametric (pwr.anova.test),f = 0.351,24,n per treatment group; detects any effect
+Overall 2×2 ANOVA,Simulation (1 000 iterations),f = 0.351,26,n per treatment group; detects any effect
+Heat priming main effect,Parametric t-test (Bonferroni α = 0.0167),d = 0.269,NA,n per treatment group (4 groups total)
+Immune priming main effect,Parametric t-test (Bonferroni α = 0.0167),d = 0.347,NA,n per treatment group (4 groups total)
+Interaction (synergy),Parametric t-test (Bonferroni α = 0.0167),d = 0.839,16,n per treatment group (4 groups total)
+Pairwise: CC vs CP,Parametric t-test (Tukey α = 0.0083),d = 0.073,NA,n per treatment group
+Pairwise: EE vs CP,Parametric t-test (Tukey α = 0.0083),d = 0.077,NA,n per treatment group
+Pairwise: CC vs EE,Parametric t-test (Tukey α = 0.0083),d = 0.15,NA,n per treatment group
+Pairwise: CC vs EP,Parametric t-test (Tukey α = 0.0083),d = 0.616,66,n per treatment group
+Pairwise: CP vs EP,Parametric t-test (Tukey α = 0.0083),d = 0.689,53,n per treatment group
+Pairwise: EE vs EP,Parametric t-test (Tukey α = 0.0083),d = 0.766,44,n per treatment group

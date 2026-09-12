@@ -1,0 +1,507 @@
+---
+title: "Manila Clam Survival Analysis"
+author: ""
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 6
+    toc_float: true
+editor_options:
+  chunk_output_type: console
+---
+
+This script analyzes survival assay data for lab-reared Manila clams in a factorial immune priming × heat priming experiment. Mortality (0 = alive, 1 = dead) is modeled over time using mixed-effects binomial logistic regression, with silo, field replicate, and assay plate included as random effects.
+
+# Setup
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(lme4)
+library(car)
+library(emmeans)
+library(DHARMa)
+library(ggplot2)
+library(cowplot)
+library(lmerTest)
+```
+
+# Load data
+
+```{r load}
+# ── CONFIG ────────────────────────────────────────────────────────────────────
+# Point this at your transformed mortality CSV (output of transform_mortality.R).
+# If running multiple assay temperatures, either combine files before loading
+# or re-run this script once per file.
+DATA_FILE <- "data/survivalassay_SP1/WC_manila-40C_mortality.csv"
+# ─────────────────────────────────────────────────────────────────────────────
+
+surv <- read_csv(DATA_FILE)
+
+# Confirm structure
+glimpse(surv)
+```
+
+# Wrangle
+
+Pivot timepoint columns to long format so each row is one clam × one timepoint.
+
+```{r wrangle}
+# Identify timepoint columns (anything ending in "HR")
+tp_cols <- names(surv)[grepl("HR$", names(surv), ignore.case = TRUE)]
+
+surv_long <- surv %>%
+  pivot_longer(
+    cols      = all_of(tp_cols),
+    names_to  = "timepoint",
+    values_to = "mortality"
+  ) %>%
+  mutate(
+    # Parse numeric hours from labels like "4HR", "29.5HR"
+    hours = as.numeric(sub("HR$", "", timepoint, ignore.case = TRUE)),
+
+    # Ensure factor variables are correctly typed
+    Immune_Priming    = factor(Immune_Priming,    levels = c("No", "Yes")),
+    Heat_Priming      = factor(Heat_Priming,      levels = c("No", "Yes")),
+    Silo_Replicate    = factor(Silo_Replicate),
+    Field_Replicate   = factor(Field_Replicate),
+    Assay_Replicate   = factor(Assay_Replicate),
+    timepoint         = factor(timepoint, levels = tp_cols),  # preserve file order
+
+    # Mortality must be integer 0/1 for binomial family
+    mortality = as.integer(mortality)
+  )
+
+# Quick sanity check
+surv_long %>%
+  count(Immune_Priming, Heat_Priming, Silo_Replicate, Field_Replicate, Assay_Replicate) %>%
+  print(n = Inf)
+```
+
+# Analysis: full time series
+
+Mixed-effects binomial logistic regression across all timepoints.
+
+Fixed effects: `Immune_Priming * Heat_Priming * hours`\
+Random effects: `Silo_Replicate`, `Field_Replicate` (nested in silo), `Assay_Replicate` (plate)
+
+*initial model – including silo, field rep, and assay rep as rand. effects*
+
+```{r model-timeseries}
+model_ts_full <- glmer(
+  mortality ~ Immune_Priming * Heat_Priming * hours +
+    (1 | Silo_Replicate) +
+    (1 | Field_Replicate) +
+    (1 | Assay_Replicate),
+  family = binomial(link = "logit"),
+  data   = surv_long,
+  control = glmerControl(optimizer = "bobyqa",
+                         optCtrl   = list(maxfun = 2e5))
+)
+
+summary(model_ts_full)
+Anova(model_ts_full, type = "II")
+```
+
+Check significance of random effects.
+
+```{r rand-effects-ts}
+model_no_silo  <- update(model_ts_full, . ~ . - (1 | Silo_Replicate))
+model_no_field <- update(model_ts_full, . ~ . - (1 | Field_Replicate))
+model_no_assay <- update(model_ts_full, . ~ . - (1 | Assay_Replicate))
+
+anova(model_ts_full, model_no_silo)
+anova(model_ts_full, model_no_field)
+anova(model_ts_full, model_no_assay)
+
+VarCorr(model_ts_full)
+
+## rewrite model without silo replicate and re run to determine if i should include silo:field or just 1 | field
+```
+
+```{r}
+# initial model results on rand. effects: 
+# 
+### no silo vs. OG: 
+# npar AIC BIC logLik -2*log(L) Chisq Df Pr(>Chisq) 
+# model_no_silo 10 923.26 979.50 -451.63 903.26
+# model_ts 11 925.26 987.13 -451.63 903.26 0 1 1
+#
+### no field vs. OG:
+# npar    AIC     BIC  logLik -2*log(L)  Chisq Df Pr(>Chisq)    
+# model_no_field   10 943.93 1000.18 -461.97    923.93                         
+# model_ts         11 925.26  987.13 -451.63    903.26 20.675  1  5.442e-06 ***
+#
+### no assay vs. OG:
+# npar    AIC     BIC  logLik -2*log(L)  Chisq Df Pr(>Chisq)    
+# model_no_assay   10 955.90 1012.14 -467.95    935.90                         
+# model_ts         11 925.26  987.13 -451.63    903.26 32.641  1  1.109e-08 ***
+#
+# will remove silo rand. effect from model and re run
+```
+
+```{r}
+# re run model with silo rand. effect removed for model simplicity (& improved power?)
+
+model_ts <- glmer(
+  mortality ~ Immune_Priming * Heat_Priming * hours +
+    (1 | Field_Replicate) +
+    (1 | Assay_Replicate),
+  family = binomial(link = "logit"),
+  data   = surv_long,
+  control = glmerControl(optimizer = "bobyqa",
+                         optCtrl   = list(maxfun = 2e5))
+)
+
+summary(model_ts)
+Anova(model_ts, type = "II")
+```
+
+Post-hoc: pairwise comparisons of treatment combinations at each timepoint.
+
+```{r posthoc-ts}
+emm_ts <- emmeans(model_ts, ~ Immune_Priming * Heat_Priming | hours, type = "response")
+pairs(emm_ts)
+```
+
+### Testing as 4 independent treatments vs a 2x2 factorial.
+
+```{r}
+surv_long4 <- surv_long %>%
+  mutate(Treatment = factor(case_when(
+    Immune_Priming == "Yes" & Heat_Priming == "Yes" ~ "Combined",
+    Immune_Priming == "Yes" & Heat_Priming == "No"  ~ "Immune_Only",
+    Immune_Priming == "No"  & Heat_Priming == "Yes" ~ "Heat_Only",
+    Immune_Priming == "No"  & Heat_Priming == "No"  ~ "Control"
+  ), levels = c("Control", "Immune_Only", "Heat_Only", "Combined")))
+```
+
+```{r}
+model_ts4 <- glmer(
+  mortality ~ Treatment * hours +
+    (1 | Field_Replicate) +
+    (1 | Assay_Replicate),
+  family = binomial(link = "logit"),
+  data   = surv_long4,
+  control = glmerControl(optimizer = "bobyqa",
+                         optCtrl   = list(maxfun = 2e5))
+)
+
+summary(model_ts4)
+Anova(model_ts4, type = "II")
+```
+
+```{r}
+### testing for sig random effects
+#
+# model_no_silo4  <- update(model_ts4, . ~ . - (1 | Silo_Replicate))
+# model_no_field4 <- update(model_ts4, . ~ . - (1 | Field_Replicate))
+# model_no_assay4 <- update(model_ts4, . ~ . - (1 | Assay_Replicate))
+# 
+# anova(model_ts4, model_no_silo4)
+# anova(model_ts4, model_no_field4)
+# anova(model_ts4, model_no_assay4)
+# 
+# VarCorr(model_ts4)
+
+###  only silo was non sig. rewrite model without silo replicate rand. effect term. 
+```
+
+```{r}
+emm_ts4 <- emmeans(model_ts4, ~ Treatment | hours, type = "response")
+pairs(emm_ts4)
+```
+
+## Write to .txt file
+
+```{r}
+output_file <- "output/WC_manila_S1/40C-model_output.txt"
+
+tryCatch({
+  sink(output_file, append = FALSE)
+  
+  cat("Run timestamp:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+  cat("================================================================\n\n")
+  
+  # # ── FULL FACTORIAL 2x2 MODELS ─────────────────────────────────────────────
+  # cat("================================================================\n")
+  # cat("2x2 FACTORIAL MODEL: Immune_Priming * Heat_Priming * hours\n")
+  # cat("Random effects: Silo + Field + Assay (initial)\n")
+  # cat("================================================================\n\n")
+  # 
+  # cat("--- Summary ---\n")
+  # print(summary(model_ts_full))          # rename to whatever you called the 3-RE model
+  # cat("\n--- Type II Anova ---\n")
+  # print(Anova(model_ts_full, type = "II"))
+  
+  # # ── Random effects LRTs ───────────────────────────────────────────────────
+  # cat("\n================================================================\n")
+  # cat("RANDOM EFFECTS LIKELIHOOD RATIO TESTS (2x2 model)\n")
+  # cat("================================================================\n\n")
+  # 
+  # cat("--- Silo removed vs. full ---\n");  print(anova(model_ts_full, model_no_silo))
+  # cat("\n--- Field removed vs. full ---\n"); print(anova(model_ts_full, model_no_field))
+  # cat("\n--- Assay removed vs. full ---\n"); print(anova(model_ts_full, model_no_assay))
+  # cat("\n--- Variance components ---\n");    print(VarCorr(model_ts_full))
+  
+  # ── Simplified 2x2 model (silo removed) ───────────────────────────────────
+  cat("\n================================================================\n")
+  cat("2x2 FACTORIAL MODEL (SIMPLIFIED): Field + Assay random effects\n")
+  cat("================================================================\n\n")
+  
+  cat("--- Summary ---\n")
+  print(summary(model_ts))
+  cat("\n--- Type II Anova ---\n")
+  print(Anova(model_ts, type = "II"))
+  
+  # ── 2x2 Post-hoc ──────────────────────────────────────────────────────────
+  cat("\n================================================================\n")
+  cat("POST-HOC: 2x2 Pairwise comparisons at each timepoint\n")
+  cat("================================================================\n\n")
+  
+  cat("--- EMmeans ---\n")
+  print(emm_ts)
+  cat("\n--- Pairwise contrasts ---\n")
+  print(pairs(emm_ts))
+  
+  # ── 4-TREATMENT MODELS ────────────────────────────────────────────────────
+  cat("\n================================================================\n")
+  cat("4-TREATMENT MODEL: Treatment * hours\n")
+  cat("Random effects: Field + Assay\n")
+  cat("================================================================\n\n")
+  
+  cat("--- Summary ---\n")
+  print(summary(model_ts4))
+  cat("\n--- Type II Anova ---\n")
+  print(Anova(model_ts4, type = "II"))
+  
+  # # ── 4-treatment random effects LRTs ───────────────────────────────────────
+  # cat("\n================================================================\n")
+  # cat("RANDOM EFFECTS LIKELIHOOD RATIO TESTS (4-treatment model)\n")
+  # cat("================================================================\n\n")
+  # 
+  # cat("--- Field removed vs. full ---\n"); print(anova(model_ts4, model_no_field4))
+  # cat("\n--- Assay removed vs. full ---\n"); print(anova(model_ts4, model_no_assay4))
+  # cat("\n--- Variance components ---\n");    print(VarCorr(model_ts4))
+  # 
+  # ── 4-treatment Post-hoc ──────────────────────────────────────────────────
+  cat("\n================================================================\n")
+  cat("POST-HOC: 4-treatment pairwise comparisons at each timepoint\n")
+  cat("================================================================\n\n")
+  
+  cat("--- EMmeans ---\n")
+  print(emm_ts4)
+  cat("\n--- Pairwise contrasts (Tukey) ---\n")
+  print(pairs(emm_ts4, adjust = "tukey"))
+
+}, finally = sink())
+
+cat("Output written to:", output_file, "\n")
+```
+
+## Plot: predicted mortality over time
+
+```{r plot-timeseries}
+surv_long$predicted_mortality <- predict(model_ts, type = "response")
+
+plot_ts <- ggplot(surv_long,
+                  aes(x     = hours,
+                      y     = predicted_mortality,
+                      color = interaction(Immune_Priming, Heat_Priming),
+                      fill  = interaction(Immune_Priming, Heat_Priming),
+                      group = interaction(Immune_Priming, Heat_Priming))) +
+  geom_point(aes(y = mortality), alpha = 0.2,
+             position = position_jitter(height = 0.03)) +
+  geom_smooth(method = "glm",
+              method.args = list(family = "binomial"),
+              se = TRUE) +
+  scale_colour_manual(
+    values = c("No.No"   = "blue",
+               "Yes.No"  = "green",
+               "No.Yes"  = "red",
+               "Yes.Yes" = "orange"),
+    labels = c("No.No"   = "Control",
+               "Yes.No"  = "Immune Priming with Poly(I:C)",
+               "No.Yes"  = "Heat Priming at 33ºC",
+               "Yes.Yes" = "Combined Immune + Heat Priming"),
+    name = "Priming Treatment"
+  ) +
+  scale_fill_manual(
+    values = c("No.No"   = "blue",
+               "Yes.No"  = "green",
+               "No.Yes"  = "red",
+               "Yes.Yes" = "orange"),
+    labels = c("No.No"   = "Control",
+               "Yes.No"  = "Immune Priming with Poly(I:C)",
+               "No.Yes"  = "Heat Priming at 33ºC",
+               "Yes.Yes" = "Combined Immune + Heat Priming"),
+    name = "Priming Treatment"
+  ) +
+  labs(
+    title = paste("Predicted Mortality over Time —", unique(surv_long$Assay_Temp)),
+    x     = "Hours",
+    y     = "Probability of Mortality"
+  ) +
+  theme_classic(base_size = 13); plot_ts
+
+ggsave(plot_ts,
+       filename = "output/WC_manila_S1/WC40C-survival_timeseries.png",
+       width = 8, height = 5)
+```
+
+### Plot individual plates (assay replicates)
+
+```{r}
+plot3 <-ggplot(surv_long, 
+              aes(x = hours, 
+                  y = predicted_mortality, 
+                  color = Assay_Replicate, 
+                  fill = Assay_Replicate, 
+                  group = Assay_Replicate)) +
+  geom_point(aes(y = mortality), alpha = 0.6, position = position_jitter(height = 0.03)) +
+  
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+  scale_colour_manual(
+    values = c("WC-CC1-40"   = "blue",
+               "WC-CC2-40"  = "darkblue",
+               "WC-CP1-40"  = "forestgreen",
+               "WC-CP2-40" = "darkgreen",
+               "WC-EE1-40"   = "red",
+               "WC-EE2-40"  = "darkred",
+               "WC-EP1-40"  = "orange",
+               "WC-EP2-40" = "goldenrod"),
+
+    labels = c("WC-CC1-40"   = "Control 1",
+               "WC-CC2-40"  = "Control 2",
+               "WC-CP1-40"  = "Immune 1",
+               "WC-CP2-40" = "Immune 2",
+               "WC-EE1-40"   = "Heat 1",
+               "WC-EE2-40"  = "Heat 2",
+               "WC-EP1-40"  = "Combined 1",
+               "WC-EP2-40" = "Combined 2"),
+    name = "Priming Treatment"
+  ) +
+  
+  scale_fill_manual(
+    values = c("WC-CC1-40"   = "blue",
+               "WC-CC2-40"  = "darkblue",
+               "WC-CP1-40"  = "forestgreen",
+               "WC-CP2-40" = "darkgreen",
+               "WC-EE1-40"   = "red",
+               "WC-EE2-40"  = "darkred",
+               "WC-EP1-40"  = "orange",
+               "WC-EP2-40" = "goldenrod"),
+
+    labels = c("WC-CC1-40"   = "Control 1",
+               "WC-CC2-40"  = "Control 2",
+               "WC-CP1-40"  = "Immune 1",
+               "WC-CP2-40" = "Immune 2",
+               "WC-EE1-40"   = "Heat 1",
+               "WC-EE2-40"  = "Heat 2",
+               "WC-EP1-40"  = "Combined 1",
+               "WC-EP2-40" = "Combined 2"),
+    name = "Priming Treatment"
+  ) +
+  
+  labs(
+    title = "",
+    y = "Probability of Mortality",
+  ) +
+  
+  theme_classic();plot3
+```
+
+## KM Curves
+
+## Generate Kaplan Meier survival curves
+
+Plot the survival function
+
+```{r}
+library(survival)
+library(ggsurvfit)
+library(gtsummary)
+```
+
+```{r}
+plot_km <- survfit2(
+  Surv(hours, mortality) ~ Immune_Priming + Heat_Priming,
+  data = surv_long
+) %>%
+  ggsurvfit() +
+  labs(
+    x = "Hours",
+    y = "Survival probability"
+  )
+
+plot_km
+```
+
+Use a log rank model to determine statistical differences in curves.
+
+```{r}
+survival::survdiff(Surv(hours, mortality) ~ Immune_Priming + Heat_Priming,
+  data = surv_long)
+```
+
+Analyze again with a Cox proportional hazards model.
+
+```{r}
+survival::coxph(Surv(hours, mortality) ~ Immune_Priming*Heat_Priming, data = surv_long)
+
+survival::coxph(Surv(hours, mortality) ~ Immune_Priming*Heat_Priming, data = surv_long) %>% 
+  tbl_regression(exp = TRUE) 
+```
+
+## Generate plots (still working)
+
+Set theme.
+
+```{r}
+my_theme<-theme_classic()+
+  theme(
+    axis.title.y = element_text(size = 14, color = "black"),
+    axis.text.y = element_text(size=12, color = "black"),
+    axis.text.x = element_text(size=12, color = "black"),
+    axis.title.x =element_text(size = 14, color = "black"),
+    legend.position = "none")
+```
+
+Stress treatment
+
+```{r}
+#options("ggsurvfit.switch-color-linetype" = TRUE)
+plot1<-ggsurvfit::survfit2(Surv(hours, mortality) ~ Immune_Priming * Heat_Priming, data = surv_long) %>% 
+  ggsurvfit::ggsurvfit() +
+  labs(
+    x = "Hours",
+    y = "Survival probability",
+    title=""
+  )+
+  ylim(0,1)+
+  my_theme+
+  #scale_linetype_manual(values=c("solid", "dashed"))+
+  scale_colour_manual(values=c("darkgray", "orange"))+
+  theme(legend.position="right");plot1
+```
+
+Stress treatment
+
+```{r}
+#options("ggsurvfit.switch-color-linetype" = TRUE)
+plot2<-ggsurvfit::survfit2(Surv(time, status) ~ Family, data = data) %>% 
+  ggsurvfit::ggsurvfit() +
+  labs(
+    x = "Hours",
+    y = "Survival probability",
+    title=""
+  )+
+  ylim(0,1)+
+  my_theme+
+  theme(legend.position="right");plot2
+```
