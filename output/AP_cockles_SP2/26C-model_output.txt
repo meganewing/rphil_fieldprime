@@ -1,0 +1,186 @@
+Run timestamp: 2026-09-20 20:02:53 
+================================================================
+
+
+================================================================
+2x2 FACTORIAL MODEL (SIMPLIFIED): Field + Assay random effects
+================================================================
+
+--- Summary ---
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: mortality ~ Immune_Priming * Heat_Priming * hours + (1 | Assay_Replicate) +      (1 | Field_Replicate)
+   Data: surv_long
+Control: glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e+05))
+
+      AIC       BIC    logLik -2*log(L)  df.resid 
+    209.1     252.7     -94.6     189.1       566 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-9.3323  0.0000  0.0512  0.2033  0.9142 
+
+Random effects:
+ Groups          Name        Variance Std.Dev.
+ Assay_Replicate (Intercept) 0.1883   0.434   
+ Field_Replicate (Intercept) 0.0000   0.000   
+Number of obs: 576, groups:  Assay_Replicate, 16; Field_Replicate, 3
+
+Fixed effects:
+                                        Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                              -2.7129     1.3956  -1.944  0.05191 .  
+Immune_PrimingYes                       -28.8892   148.9420  -0.194  0.84621    
+Heat_PrimingYes                         -29.6729   138.6056  -0.214  0.83048    
+hours                                     0.9683     0.2897   3.342  0.00083 ***
+Immune_PrimingYes:Heat_PrimingYes        56.3989   146.1773   0.386  0.69963    
+Immune_PrimingYes:hours                   7.4083    37.2356   0.199  0.84230    
+Heat_PrimingYes:hours                     7.5457    34.6516   0.218  0.82762    
+Immune_PrimingYes:Heat_PrimingYes:hours -14.6414    36.5451  -0.401  0.68869    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Correlation of Fixed Effects:
+            (Intr) Imm_PY Ht_PrY hours  Im_PY:H_PY Im_PY: Ht_PY:
+Immn_PrmngY -0.003                                              
+Het_PrmngYs -0.003 -0.485                                       
+hours       -0.953  0.003  0.003                                
+Imm_PY:H_PY -0.003 -0.559 -0.454  0.003                         
+Immn_PrmnY:  0.001 -1.000  0.485 -0.002  0.559                  
+Ht_PrmngYs:  0.001  0.485 -1.000 -0.002  0.454     -0.485       
+Im_PY:H_PY:  0.005  0.559  0.454 -0.004 -1.000     -0.559 -0.454
+optimizer (bobyqa) convergence code: 0 (OK)
+boundary (singular) fit: see help('isSingular')
+
+
+--- Type II Anova ---
+Analysis of Deviance Table (Type II Wald chisquare tests)
+
+Response: mortality
+                                    Chisq Df Pr(>Chisq)    
+Immune_Priming                     0.7801  1    0.37710    
+Heat_Priming                       1.3465  1    0.24589    
+hours                             29.5309  1  5.503e-08 ***
+Immune_Priming:Heat_Priming        5.0888  1    0.02408 *  
+Immune_Priming:hours               0.0009  1    0.97597    
+Heat_Priming:hours                 0.0016  1    0.96787    
+Immune_Priming:Heat_Priming:hours  0.1605  1    0.68869    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+================================================================
+POST-HOC: 2x2 Pairwise comparisons at each timepoint
+================================================================
+
+--- EMmeans ---
+hours = 6.5:
+ Immune_Priming Heat_Priming     prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.972899 1.83e-02 Inf 0.9018017 0.9929245
+ Yes            No           1.000000 1.10e-08 Inf 0.0000000 1.0000000
+ No             Yes          1.000000 9.00e-09 Inf 0.0000000 1.0000000
+ Yes            Yes          0.969219 2.08e-02 Inf 0.8891799 0.9919723
+
+Confidence level used: 0.95 
+Intervals are back-transformed from the logit scale 
+
+--- Pairwise contrasts ---
+hours = 6.5:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     0.00e+00 0.00e+00 Inf    1  -0.207  0.9969
+ No No / No Yes     0.00e+00 0.00e+00 Inf    1  -0.224  0.9961
+ No No / Yes Yes    1.00e+00 1.00e+00 Inf    1   0.135  0.9991
+ Yes No / No Yes    1.00e+00 1.39e+02 Inf    1  -0.001  1.0000
+ Yes No / Yes Yes   2.65e+08 2.47e+10 Inf    1   0.208  0.9968
+ No Yes / Yes Yes   2.96e+08 2.56e+10 Inf    1   0.225  0.9960
+
+P value adjustment: tukey method for comparing a family of 4 estimates 
+Tests are performed on the log odds ratio scale 
+
+================================================================
+4-TREATMENT MODEL: Treatment * hours
+Random effects: Field + Assay
+================================================================
+
+--- Summary ---
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: mortality ~ Treatment * hours + (1 | Field_Replicate) + (1 |      Assay_Replicate)
+   Data: surv_long4
+Control: glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e+05))
+
+      AIC       BIC    logLik -2*log(L)  df.resid 
+    209.1     252.7     -94.6     189.1       566 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-9.3324  0.0000  0.0512  0.2033  0.9142 
+
+Random effects:
+ Groups          Name        Variance Std.Dev.
+ Assay_Replicate (Intercept) 0.1883   0.434   
+ Field_Replicate (Intercept) 0.0000   0.000   
+Number of obs: 576, groups:  Assay_Replicate, 16; Field_Replicate, 3
+
+Fixed effects:
+                           Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                 -2.7129     1.3957  -1.944 0.051923 .  
+TreatmentImmune_Only       -28.8251   336.7424  -0.086 0.931784    
+TreatmentHeat_Only         -29.7104   353.8965  -0.084 0.933094    
+TreatmentCombined           -2.1632     1.9533  -1.107 0.268090    
+hours                        0.9682     0.2897   3.342 0.000831 ***
+TreatmentImmune_Only:hours   7.3923    84.1857   0.088 0.930028    
+TreatmentHeat_Only:hours     7.5551    88.4742   0.085 0.931949    
+TreatmentCombined:hours      0.3126     0.4104   0.762 0.446162    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Correlation of Fixed Effects:
+            (Intr) TrtI_O TrtH_O TrtmnC hours  TrI_O: TrH_O:
+TrtmntImm_O -0.001                                          
+TrtmntHt_On -0.001  0.018                                   
+TrtmntCmbnd -0.714  0.001  0.001                            
+hours       -0.953  0.001  0.001  0.677                     
+TrtmntIm_O:  0.000 -1.000 -0.018  0.000  0.000              
+TrtmntHt_O:  0.000 -0.018 -1.000  0.000 -0.001  0.018       
+TrtmntCmbn:  0.672 -0.001 -0.001 -0.958 -0.701  0.000  0.000
+optimizer (bobyqa) convergence code: 0 (OK)
+boundary (singular) fit: see help('isSingular')
+
+
+--- Type II Anova ---
+Analysis of Deviance Table (Type II Wald chisquare tests)
+
+Response: mortality
+                 Chisq Df Pr(>Chisq)    
+Treatment        7.182  3    0.06632 .  
+hours           29.539  1  5.482e-08 ***
+Treatment:hours  0.595  3    0.89757    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+================================================================
+POST-HOC: 4-treatment pairwise comparisons at each timepoint
+================================================================
+
+--- EMmeans ---
+hours = 6.5:
+ Treatment        prob       SE  df asymp.LCL asymp.UCL
+ Control     0.9728987 1.83e-02 Inf 0.9017996 0.9929245
+ Immune_Only 1.0000000 2.60e-08 Inf 0.0000000 1.0000000
+ Heat_Only   1.0000000 2.30e-08 Inf 0.0000000 1.0000000
+ Combined    0.9692191 2.08e-02 Inf 0.8891791 0.9919724
+
+Confidence level used: 0.95 
+Intervals are back-transformed from the logit scale 
+
+--- Pairwise contrasts (Tukey) ---
+hours = 6.5:
+ contrast                odds.ratio       SE  df null z.ratio p.value
+ Control / Immune_Only     0.00e+00 0.00e+00 Inf    1  -0.091  0.9997
+ Control / Heat_Only       0.00e+00 0.00e+00 Inf    1  -0.088  0.9998
+ Control / Combined        1.00e+00 1.00e+00 Inf    1   0.134  0.9991
+ Immune_Only / Heat_Only   1.00e+00 2.55e+02 Inf    1  -0.001  1.0000
+ Immune_Only / Combined    2.55e+08 5.36e+10 Inf    1   0.092  0.9997
+ Heat_Only / Combined      3.03e+08 6.70e+10 Inf    1   0.088  0.9998
+
+P value adjustment: tukey method for comparing a family of 4 estimates 
+Tests are performed on the log odds ratio scale 

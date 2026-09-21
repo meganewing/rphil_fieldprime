@@ -1,6 +1,7 @@
 # =============================================================================
 # transform_mortality.R
 # Transforms plate-based clam mortality CSV data into tidy output.
+# Supports both 24-well plate (original) and 12-well plate formats.
 # All timepoints present in the file are automatically detected and each
 # gets its own column in the output (named exactly as in the raw data,
 # e.g. "4HR", "29.5HR").
@@ -20,6 +21,10 @@ INPUT_FILE <- "data/survivalassay_SP2/AP_cockles-26C.csv"
 
 # Output file path. Set to NULL to auto-generate (data/<input_name>_mortality.csv)
 OUTPUT_FILE <- "data/survivalassay_SP2/AP_cockles-26C_mortality.csv"
+
+# Plate format: "24" (original, 4 rows x 6 wells) or "12" (3 rows x 4 wells)
+# Set to NULL to auto-detect from the data.
+PLATE_FORMAT <- NULL
 
 # Treatment lookup: treatment code -> c(Immune_Priming, Heat_Priming)
 TREATMENT_INFO <- list(
@@ -45,7 +50,45 @@ parse_plate_id <- function(plate_id) {
   )
 }
 
-transform_mortality <- function(input_file, output_file = NULL) {
+# ---------------------------------------------------------------------------
+# detect_plate_format()
+# Infers whether the file uses 24-well or 12-well layout by checking how
+# many numeric well-number columns follow the first plate ID.
+#   24-well: plate_id, 1, 2, 3, 4, 5, 6  (up to 6 numeric cols before gap)
+#   12-well: plate_id, 1, 2, 3, 4         (up to 4 numeric cols before gap)
+# ---------------------------------------------------------------------------
+detect_plate_format <- function(mat, first_plate_row) {
+  header_row   <- mat[first_plate_row, ]
+  plate_pattern <- "^[A-Za-z]+-[A-Z]+[0-9]+-[0-9]+$"
+  first_plate_col <- which(grepl(plate_pattern, header_row))[1]
+
+  n_well_cols <- 0
+  for (offset in seq_len(8)) {
+    j <- first_plate_col + offset
+    if (j > ncol(mat)) break
+    val <- mat[first_plate_row, j]
+    if (grepl("^[0-9]+$", val)) {
+      n_well_cols <- n_well_cols + 1
+    } else {
+      break
+    }
+  }
+
+  if (n_well_cols >= 5) {
+    fmt <- "24"
+  } else if (n_well_cols >= 3) {
+    fmt <- "12"
+  } else {
+    fmt <- "24"
+    warning("Could not confidently detect plate format; defaulting to 24-well.")
+  }
+  cat(sprintf("Detected plate format: %s-well (%d well columns per row)\n",
+              fmt, n_well_cols))
+  fmt
+}
+
+transform_mortality <- function(input_file, output_file = NULL,
+                                plate_format = NULL) {
 
   # Read entire file as character matrix (no header, all strings)
   raw <- read.csv(input_file, header = FALSE, colClasses = "character",
@@ -71,7 +114,28 @@ transform_mortality <- function(input_file, output_file = NULL) {
   if (is.na(first_plate_row)) stop("Could not find any plate ID row in the file.")
 
   # ------------------------------------------------------------------
-  # 2. Discover all plates and their column offsets
+  # 2. Determine plate format (auto-detect if not specified)
+  # ------------------------------------------------------------------
+  if (is.null(plate_format)) {
+    plate_format <- detect_plate_format(mat, first_plate_row)
+  }
+  plate_format <- as.character(plate_format)
+
+  if (plate_format == "24") {
+    # 24-well: rows A B C D, wells 1-6 (col offsets 1-7, skip "blank")
+    ROW_LABELS   <- c("A", "B", "C", "D")
+    MAX_WELL_OFFSET <- 7   # scan up to 7 cols beyond the plate ID col
+  } else if (plate_format == "12") {
+    # 12-well: rows A B C, wells 1-4 (col offsets 1-4, skip "blank")
+    ROW_LABELS   <- c("A", "B", "C")
+    MAX_WELL_OFFSET <- 4
+  } else {
+    stop(paste("Unknown plate format:", plate_format,
+               "— use '24' or '12'."))
+  }
+
+  # ------------------------------------------------------------------
+  # 3. Discover all plates and their column offsets
   # ------------------------------------------------------------------
   header_row <- mat[first_plate_row, ]
   plates <- list()
@@ -84,7 +148,7 @@ transform_mortality <- function(input_file, output_file = NULL) {
               paste(sapply(plates, `[[`, "plate_id"), collapse = ", ")))
 
   # ------------------------------------------------------------------
-  # 3. Discover ALL timepoint blocks in file order
+  # 4. Discover ALL timepoint blocks in file order
   # ------------------------------------------------------------------
   hr_pattern <- "^[0-9]+\\.?[0-9]*HR$"
   timepoint_blocks <- list()
@@ -114,11 +178,11 @@ transform_mortality <- function(input_file, output_file = NULL) {
   cat(sprintf("Found %d timepoints: %s\n", length(tp_cols), paste(tp_cols, collapse = ", ")))
 
   # ------------------------------------------------------------------
-  # 4. Discover non-blank well column positions for each plate
+  # 5. Discover non-blank well column positions for each plate
   # ------------------------------------------------------------------
   get_well_cols <- function(plate_col) {
     well_info <- list()
-    for (offset in 1:7) {
+    for (offset in seq_len(MAX_WELL_OFFSET)) {
       abs_col <- plate_col + offset
       if (abs_col > ncols) break
       cell <- mat[first_plate_row, abs_col]
@@ -130,19 +194,40 @@ transform_mortality <- function(input_file, output_file = NULL) {
   }
 
   # ------------------------------------------------------------------
-  # 5. Build output records
+  # 6. Row-lookup helper
   #
-  # Replicate structure:
-  #   Silo_Replicate  = plate number (1 or 2); one silo per plate
-  #                     plate 1 holds silo 1 clams (rows A & B)
-  #                     plate 2 holds silo 2 clams (rows C & D)
-  #   Field_Replicate = each row letter is its own field box replicate,
-  #                     labelled as silo+row (e.g. "1A", "1B", "2C", "2D")
-  #   Assay_Replicate = full plate ID (the physical 24-well assay plate)
+  # Both formats label each data row explicitly in column 1 (e.g. "A",
+  # "B", "C", "D"), so we search the rows immediately following the
+  # plate header row for the matching label rather than relying on
+  # fixed offsets.
   # ------------------------------------------------------------------
-  ROW_LABELS <- c("A", "B", "C", "D")
-  meta_cols  <- c("PlateID_well", "Silo_Replicate", "Field_Replicate", "Assay_Replicate",
-                  "Immune_Priming", "Heat_Priming", "Assay_Temp")
+  get_data_row <- function(plate_hdr_row, row_label) {
+    for (offset in seq_len(length(ROW_LABELS) + 2)) {
+      r <- plate_hdr_row + offset
+      if (r > nrows) break
+      if (toupper(mat[r, 1]) == toupper(row_label)) return(r)
+    }
+    return(NA)
+  }
+
+  # ------------------------------------------------------------------
+  # 7. Build output records
+  #
+  # ---- 24-well replicate structure (unchanged) ----
+  #   Silo_Replicate  = plate number (1 or 2)
+  #   Field_Replicate = silo + row letter (e.g. "1A", "2C")
+  #   Assay_Replicate = full plate ID
+  #
+  # ---- 12-well replicate structure ----
+  #   Each plate carries a unique replicate number (e.g. CC1…CC4).
+  #   Silo_Replicate  = plate replicate number (1–4)
+  #   Field_Replicate = row letter (A, B, or C) — one silo/field box
+  #                     per row
+  #   Assay_Replicate = full plate ID
+  # ------------------------------------------------------------------
+  meta_cols <- c("PlateID_well", "Silo_Replicate", "Field_Replicate",
+                 "Assay_Replicate", "Immune_Priming", "Heat_Priming",
+                 "Assay_Temp")
 
   records <- list()
 
@@ -154,18 +239,22 @@ transform_mortality <- function(input_file, output_file = NULL) {
     tx_info <- TREATMENT_INFO[[parsed$treatment_code]]
     if (is.null(tx_info)) tx_info <- c("Unknown", "Unknown")
 
-    silo_rep  <- parsed$replicate   # plate number = silo number
+    silo_rep  <- parsed$replicate
     well_cols <- get_well_cols(plate_col)
 
     for (row_label in ROW_LABELS) {
-      row_offset <- which(ROW_LABELS == row_label)  # A=1, B=2, C=3, D=4
 
-      # Field replicates A/B/C/D map to plate rows as follows:
-      # Plate 1: rows A&B = field rep A, rows C&D = field rep B
-      # Plate 2: rows A&B = field rep C, rows C&D = field rep D
-      field_rep_labels <- list("1" = c("A"="A","B"="A","C"="B","D"="B"),
-                               "2" = c("A"="C","B"="C","C"="D","D"="D"))
-      field_rep <- field_rep_labels[[as.character(silo_rep)]][[row_label]]
+      # Field_Replicate assignment
+      if (plate_format == "24") {
+        field_rep_labels <- list(
+          "1" = c("A" = "A", "B" = "A", "C" = "B", "D" = "B"),
+          "2" = c("A" = "C", "B" = "C", "C" = "D", "D" = "D")
+        )
+        field_rep <- field_rep_labels[[as.character(silo_rep)]][[row_label]]
+      } else {
+        # 12-well: each row letter is its own field replicate
+        field_rep <- row_label
+      }
 
       for (wc in well_cols) {
         cup_id <- paste0(plate_id, "_", row_label, wc$label)
@@ -181,8 +270,8 @@ transform_mortality <- function(input_file, output_file = NULL) {
         )
 
         for (blk in unique_blocks) {
-          data_row <- blk$plate_hdr_row + row_offset
-          if (data_row > nrows) {
+          data_row <- get_data_row(blk$plate_hdr_row, row_label)
+          if (is.na(data_row) || data_row > nrows) {
             rec[[blk$hr]] <- NA
             next
           }
@@ -201,7 +290,7 @@ transform_mortality <- function(input_file, output_file = NULL) {
   }
 
   # ------------------------------------------------------------------
-  # 6. Assemble data frame
+  # 8. Assemble data frame
   # ------------------------------------------------------------------
   out_df <- do.call(rbind, lapply(records, as.data.frame,
                                   stringsAsFactors = FALSE, check.names = FALSE))
@@ -212,7 +301,7 @@ transform_mortality <- function(input_file, output_file = NULL) {
   out_df <- out_df[!all_na, ]
 
   # ------------------------------------------------------------------
-  # 7. Write output
+  # 9. Write output
   # ------------------------------------------------------------------
   if (is.null(output_file)) {
     base        <- tools::file_path_sans_ext(basename(input_file))
@@ -228,6 +317,6 @@ transform_mortality <- function(input_file, output_file = NULL) {
 # RUN
 # =============================================================================
 
-result <- transform_mortality(INPUT_FILE, OUTPUT_FILE)
+result <- transform_mortality(INPUT_FILE, OUTPUT_FILE, plate_format = PLATE_FORMAT)
 cat("\nPreview of output (first 10 rows):\n")
 print(head(result, 10))

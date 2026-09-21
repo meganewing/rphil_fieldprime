@@ -38,7 +38,7 @@ library(lmerTest)
 # Point this at your transformed mortality CSV (output of transform_mortality.R).
 # If running multiple assay temperatures, either combine files before loading
 # or re-run this script once per file.
-DATA_FILE <- "data/survivalassay_SP2/WC_manila-40C_mortality.csv"
+DATA_FILE <- "data/survivalassay_SP2/AP_cockles-26C_mortality.csv"
 # ─────────────────────────────────────────────────────────────────────────────
 
 surv <- read_csv(DATA_FILE)
@@ -150,8 +150,8 @@ VarCorr(model_ts_full)
 
 model_ts <- glmer(
   mortality ~ Immune_Priming * Heat_Priming * hours +
-     (1 | Field_Replicate) +
-     (1 | Assay_Replicate) , 
+     (1 | Assay_Replicate) +
+     (1 | Field_Replicate) , 
   family = binomial(link = "logit"),
   data   = surv_long,
   control = glmerControl(optimizer = "bobyqa",
@@ -249,7 +249,7 @@ pairs(emm_ts4)
 ## Write to .txt file
 
 ```{r}
-output_file <- "output/WC_manila_SP2/40C-model_output.txt"
+output_file <- "output/AP_cockles_SP2/26C-model_output.txt"
 
 tryCatch({
   sink(output_file, append = FALSE)
@@ -379,7 +379,7 @@ plot_ts <- ggplot(surv_long,
   theme_classic(base_size = 13); plot_ts
 
 ggsave(plot_ts,
-       filename = "output/WC_manila_SP2/WC40C-survival_timeseries.png",
+       filename = "output/AP_cockles_SP2/BC26C-survival_timeseries.png",
        width = 8, height = 5)
 ```
 
