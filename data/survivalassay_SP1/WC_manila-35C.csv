@@ -1,4 +1,4 @@
-1 = alive (sealed or responds to touch); 0 = dead (gaped and unresponsive),,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 4HR,"Time Check Started (all plates): 9:30p, 8/13",,,,,,,4HR,"Time Check Started (all plates): 9:30p, 8/13",,,,,,,4HR,"Time Check Started (all plates): 9:30p, 8/13",,,,,,,4HR,"Time Check Started (all plates): 9:30p, 8/13",,,,,,,4HR,"Time Check Started (all plates): 9:30p, 8/13",,,,,,,4HR,"Time Check Started (all plates): 9:30p, 8/13",,,,,,,4HR,"Time Check Started (all plates): 9:30p, 8/13",,,,,,,4HR,"Time Check Started (all plates): 9:30p, 8/13",,,,,
 WC-CC1-35,1,2,3,4,5,6,,WC-CC2-35,1,2,3,4,5,6,,WC-EE1-35,1,2,3,4,5,6,,WC-EE2-35,1,2,3,4,5,6,,WC-CP1-35,1,2,3,4,5,6,,WC-CP2-35,1,2,3,4,5,6,,WC-EP1-35,1,2,3,4,5,6,,WC-EP2-35,1,2,3,4,5,6
@@ -9,10 +9,10 @@ D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 6HR,"Time Check Started (all plates): 11:30p, 8/13",,,,,,,6HR,"Time Check Started (all plates): 11:30p, 8/13",,,,,,,6HR,"Time Check Started (all plates): 11:30p, 8/13",,,,,,,6HR,"Time Check Started (all plates): 11:30p, 8/13",,,,,,,6HR,"Time Check Started (all plates): 11:30p, 8/13",,,,,,,6HR,"Time Check Started (all plates): 11:30p, 8/13",,,,,,,6HR,"Time Check Started (all plates): 11:30p, 8/13",,,,,,,6HR,"Time Check Started (all plates): 11:30p, 8/13",,,,,
 WC-CC1-35,1,2,3,4,5,6,,WC-CC2-35,1,2,3,4,5,6,,WC-EE1-35,1,2,3,4,5,6,,WC-EE2-35,1,2,3,4,5,6,,WC-CP1-35,1,2,3,4,5,6,,WC-CP2-35,1,2,3,4,5,6,,WC-EP1-35,1,2,3,4,5,6,,WC-EP2-35,1,2,3,4,5,6
-A,blank,0,,,,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank
-B,blank,0,,,,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank
-C,blank,0,,,,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank
-D,blank,0,,,,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank
+A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank,,A,blank,0,0,0,0,blank
+B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank,,B,blank,0,0,0,0,blank
+C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank,,C,blank,0,0,0,0,blank
+D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank,,D,blank,0,0,0,0,blank
 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 8HR,"Time Check Started (all plates): 1:30a, 8/14",,,,,,,8HR,"Time Check Started (all plates): 1:30a, 8/14",,,,,,,8HR,"Time Check Started (all plates): 1:30a, 8/14",,,,,,,8HR,"Time Check Started (all plates): 1:30a, 8/14",,,,,,,8HR,"Time Check Started (all plates): 1:30a, 8/14",,,,,,,8HR,"Time Check Started (all plates): 1:30a, 8/14",,,,,,,8HR,"Time Check Started (all plates): 1:30a, 8/14",,,,,,,8HR,"Time Check Started (all plates): 1:30a, 8/14",,,,,
 WC-CC1-35,1,2,3,4,5,6,,WC-CC2-35,1,2,3,4,5,6,,WC-EE1-35,1,2,3,4,5,6,,WC-EE2-35,1,2,3,4,5,6,,WC-CP1-35,1,2,3,4,5,6,,WC-CP2-35,1,2,3,4,5,6,,WC-EP1-35,1,2,3,4,5,6,,WC-EP2-35,1,2,3,4,5,6

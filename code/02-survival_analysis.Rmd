@@ -38,7 +38,7 @@ library(lmerTest)
 # Point this at your transformed mortality CSV (output of transform_mortality.R).
 # If running multiple assay temperatures, either combine files before loading
 # or re-run this script once per file.
-DATA_FILE <- "data/survivalassay_SP1/WC_manila-40C_mortality.csv"
+DATA_FILE <- "data/survivalassay_SP2/WC_manila-40C_mortality.csv"
 # ─────────────────────────────────────────────────────────────────────────────
 
 surv <- read_csv(DATA_FILE)
@@ -125,7 +125,7 @@ VarCorr(model_ts_full)
 ```
 
 ```{r}
-# initial model results on rand. effects: 
+# initial model results on rand. effects for manilas-40C (SP2): 
 # 
 ### no silo vs. OG: 
 # npar AIC BIC logLik -2*log(L) Chisq Df Pr(>Chisq) 
@@ -146,12 +146,12 @@ VarCorr(model_ts_full)
 ```
 
 ```{r}
-# re run model with silo rand. effect removed for model simplicity (& improved power?)
+# re run model with non sig rand. effect removed for model simplicity (& improved power)
 
 model_ts <- glmer(
   mortality ~ Immune_Priming * Heat_Priming * hours +
-    (1 | Field_Replicate) +
-    (1 | Assay_Replicate),
+     (1 | Field_Replicate) +
+     (1 | Assay_Replicate) , 
   family = binomial(link = "logit"),
   data   = surv_long,
   control = glmerControl(optimizer = "bobyqa",
@@ -167,6 +167,35 @@ Post-hoc: pairwise comparisons of treatment combinations at each timepoint.
 ```{r posthoc-ts}
 emm_ts <- emmeans(model_ts, ~ Immune_Priming * Heat_Priming | hours, type = "response")
 pairs(emm_ts)
+```
+
+### looking as.factor for hours to estimate LTime50 at Temp
+
+dont run before plotting or will have to re run previous chunks to get plot to go
+
+```{r}
+# surv_long$hours_f <- as.factor(surv_long$hours)
+# 
+# model_f <- glmer(
+#   mortality ~ Immune_Priming * Heat_Priming * hours_f +
+#     (1 | Field_Replicate) +
+#     (1 | Assay_Replicate),
+#   family  = binomial(link = "logit"),
+#   data    = surv_long,
+#   control = glmerControl(optimizer = "bobyqa",
+#                          optCtrl   = list(maxfun = 2e5))
+# )
+# 
+# # Predicted probability at each time × treatment
+# emm_f <- emmeans(model_f,
+#                  ~ Immune_Priming * Heat_Priming | hours_f,
+#                  type = "response")
+# 
+# # Find which time point is closest to p = 0.50 per group
+# as.data.frame(emm_f) %>%
+#   group_by(Immune_Priming, Heat_Priming) %>%
+#   slice_min(abs(prob - 0.50), n = 1) %>%   # 'prob' is the response-scale column
+#   select(Immune_Priming, Heat_Priming, hours_f, prob, asymp.LCL, asymp.UCL)
 ```
 
 ### Testing as 4 independent treatments vs a 2x2 factorial.
@@ -220,7 +249,7 @@ pairs(emm_ts4)
 ## Write to .txt file
 
 ```{r}
-output_file <- "output/WC_manila_S1/40C-model_output.txt"
+output_file <- "output/WC_manila_SP2/40C-model_output.txt"
 
 tryCatch({
   sink(output_file, append = FALSE)
@@ -350,7 +379,7 @@ plot_ts <- ggplot(surv_long,
   theme_classic(base_size = 13); plot_ts
 
 ggsave(plot_ts,
-       filename = "output/WC_manila_S1/WC40C-survival_timeseries.png",
+       filename = "output/WC_manila_SP2/WC40C-survival_timeseries.png",
        width = 8, height = 5)
 ```
 

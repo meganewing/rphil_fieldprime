@@ -16,10 +16,10 @@
 # CONFIG — edit these variables for each new input file
 # =============================================================================
 
-INPUT_FILE <- "data/survivalassay_SP1/WC_manila-40C.csv"
+INPUT_FILE <- "data/survivalassay_SP2/WC_manila-35C.csv"
 
 # Output file path. Set to NULL to auto-generate (data/<input_name>_mortality.csv)
-OUTPUT_FILE <- "data/survivalassay_SP1/WC_manila-40C_mortality.csv"
+OUTPUT_FILE <- "data/survivalassay_SP2/WC_manila-35C_mortality.csv"
 
 # Treatment lookup: treatment code -> c(Immune_Priming, Heat_Priming)
 TREATMENT_INFO <- list(
