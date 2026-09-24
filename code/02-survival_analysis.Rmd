@@ -38,7 +38,7 @@ library(lmerTest)
 # Point this at your transformed mortality CSV (output of transform_mortality.R).
 # If running multiple assay temperatures, either combine files before loading
 # or re-run this script once per file.
-DATA_FILE <- "data/survivalassay_SP2/AP_cockles-26C_mortality.csv"
+DATA_FILE <- "data/survivalassay_SP2/WC_manila-40C_mortality.csv"
 # ─────────────────────────────────────────────────────────────────────────────
 
 surv <- read_csv(DATA_FILE)

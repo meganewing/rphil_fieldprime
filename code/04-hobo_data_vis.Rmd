@@ -1,0 +1,10 @@
+---
+title: "hobo_data"
+author: "Megan Ewing"
+date: "2026-09-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
