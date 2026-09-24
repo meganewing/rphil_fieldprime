@@ -1,0 +1,674 @@
+---
+title: PolyIC resazurin testing for batch 2 seed 
+author: "AS Huffmyer"
+date: '2024'
+output:
+  github_document: null
+  md_document: default
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 6
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+This script analyzes resazurin assays for the PolyIC seed project. This analysis is for "batch 2" of seed brought back from the hatchery in early March. This batch was analyzed with the FLx800 plate reader instrument.    
+
+# Set up 
+
+Set up workspace, set options, and load required packages.    
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+Load libraries. 
+```{r}
+library(MASS) 
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(cowplot)
+library(lme4)
+library(lmerTest)
+library(car)
+library(effects)
+library(emmeans)
+library(tools)
+```
+
+# Resazurin metabolic rates (individual) 
+
+## Load data 
+
+```{r}
+# Set the folder path
+folder_path <- "data/resazurin/plate_files/batch2-seed"  
+
+# List all txt files in the folder
+file_list <- list.files(path = folder_path, pattern = "\\.txt$", full.names = TRUE)
+
+# Check if any files are found
+if (length(file_list) == 0) {
+  stop("No txt files found in the specified folder. Check the folder path or file extension.")
+}
+
+# Initialize an empty list to store processed data
+data_list <- list()
+
+# Loop through each file and load the data
+for (file in file_list) {
+  # Ensure file is a character string
+  if (!is.character(file)) next
+  
+  # Extract file name without extension
+  file_name <- file_path_sans_ext(basename(file))
+  
+  # Read the text file, skipping the first row (metadata)
+  data <- read.delim(file, header = FALSE, skip = 2)
+  
+  # Assign column names: first column is row labels (A–H), others are 1–12
+  colnames(data) <- c("Row", as.character(1:13))
+  
+  #remove last column
+  data<-data%>%select(-ncol(data))
+  
+  # Convert to long format
+  data_long <- data %>%
+    pivot_longer(cols = -Row, names_to = "Column", values_to = "Value") %>%
+    mutate(
+      Column = sprintf("%02d", as.integer(Column)),  # Ensure two-digit column numbers
+      Well_ID = paste0(Row, Column),                # Format well ID as "A01", "B02", etc.
+      FileName = file_name,                          # Add file name
+      plate = str_extract(file_name, "plate\\d+"),  # Extract "plateX"
+      date = str_extract(file_name, "^\\d{8}"),     # Extract 8-digit date
+      timepoint = str_extract(file_name, "T\\d+") %>% 
+        str_remove("T") %>% 
+        as.numeric()                                # Convert timepoint to numeric
+    ) %>%
+    select(FileName, Well_ID, Value, plate, date, timepoint)  # Select relevant columns
+  
+  # Store the processed data in the list
+  data_list[[file_name]] <- data_long
+}
+
+# Print an example of processed data
+head(data_list[[file_name]])
+
+
+# Combine all data frames into a single data frame (optional)
+combined_data <- bind_rows(data_list, .id = "Source")
+
+# Print the first few rows of the combined data (optional)
+head(combined_data)
+
+# Rename columns
+combined_data<-combined_data%>%
+  rename("well"=Well_ID, resazurin_counts=`Value`)%>%
+  mutate(timepoint=as.character(timepoint))
+
+head(combined_data)
+```
+
+Load in metadata. 
+
+```{r}
+metadata<-read_xlsx(path="data/resazurin/metadata/metadata_batch2.xlsx")%>%
+  mutate(date=as.character(date))
+```
+
+Join with data frame and remove any wells that did not have samples. 
+
+```{r}
+str(combined_data)
+str(metadata)
+
+full_data<-left_join(combined_data, metadata, by=c("date", "plate", "well"))%>%
+  filter(!is.na(type))
+
+head(full_data)
+```
+
+Load in size data. 
+
+```{r}
+size<-read_csv("data/resazurin/size-batch2.csv")%>%
+  mutate(date=as.character(date))%>%select(!notes)
+```
+
+Join with data. 
+
+```{r}
+full_data<-left_join(full_data, size, by=c("date", "plate", "well"))
+```
+
+## Prep the data 
+
+Plot the raw data. 
+
+```{r}
+full_data%>%
+  ggplot(aes(x=timepoint, y=resazurin_counts, colour=temperature, group=interaction(date, plate, well)))+
+  facet_wrap(~date)+
+  geom_point()+
+  geom_line()+
+  scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  theme_classic()
+```
+
+Calculate fluorescence at each time point normalized to the starting value at time 0. 
+```{r}
+full_data<-full_data%>%
+  group_by(date, plate, well, temperature, spat_treatment, tank, holding_tank)%>%
+  arrange(date, plate, well)%>%
+  mutate(fluorescence.norm=resazurin_counts/first(resazurin_counts))
+```
+
+Plot again. 
+
+```{r}
+full_data%>%
+  ggplot(aes(x=timepoint, y=fluorescence.norm, colour=temperature, group=interaction(date, plate, well)))+
+  facet_wrap(~date)+
+  geom_point()+
+  geom_line()+
+  scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  theme_classic()
+```
+
+View blanks
+
+```{r}
+full_data%>%
+  filter(type=="blank")%>%
+  ggplot(aes(x=timepoint, y=fluorescence.norm, colour=temperature, group=interaction(date, plate, well)))+
+  facet_wrap(~date)+
+  geom_point()+
+  scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  geom_line()+
+  theme_classic()
+```
+
+Calculate mean change in blank at each time point. 
+
+```{r}
+blanks<-full_data%>%
+  filter(type=="blank")%>%
+  group_by(date, plate, temperature, timepoint)%>%
+  summarise(mean_blank=mean(fluorescence.norm));blanks
+```
+
+View summarized blank data. 
+
+```{r}
+blanks%>%
+  ggplot(aes(x=timepoint, y=mean_blank, colour=temperature))+
+  facet_wrap(~date)+
+  geom_point()+
+  scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  theme_classic()
+```
+
+Subtract blank values from fluorescence values for oysters. 
+
+```{r}
+full_data<-left_join(full_data, blanks)
+
+full_data<-full_data%>%
+  filter(!type=="blank")%>%
+  mutate(value=fluorescence.norm-mean_blank)
+```
+
+Plot again. 
+
+```{r}
+full_data%>%
+  ggplot(aes(x=timepoint, y=value, colour=temperature, group=interaction(date, plate, well)))+
+  facet_wrap(~date)+
+  geom_point()+
+  geom_line()+
+  scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  theme_classic()
+```
+
+Size normalize data. 
+```{r}
+full_data<-full_data%>%
+  mutate(value.mm=value/length.mm)
+```
+
+Plot again. 
+
+```{r}
+full_data%>%
+  ggplot(aes(x=timepoint, y=value.mm, colour=temperature, group=interaction(date, plate, well)))+
+  facet_wrap(~date)+
+  geom_point()+
+  geom_line()+
+  scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  theme_classic()
+```
+
+Remove unnecessary columns. 
+
+```{r}
+full_data<-full_data%>%
+  select(!resazurin_counts)%>%
+  select(!FileName)%>%
+  select(!type)%>%
+  select(!fluorescence.norm)%>%
+  select(!mean_blank)
+```
+
+## Models    
+
+Plot raw data. 
+```{r}
+full_data%>%
+  ggplot(aes(x=timepoint, y=value.mm, colour=temperature, group=interaction(date, plate, well)))+
+  facet_wrap(~date*spat_treatment)+
+  geom_point()+
+  scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  geom_line()+
+  theme_classic()
+```
+
+```{r}
+full_data%>%
+  ggplot(aes(x=timepoint, y=value.mm, colour=spat_treatment, group=interaction(date, plate, well)))+
+  facet_wrap(~temperature)+
+  geom_point()+
+  geom_line()+
+  scale_colour_manual(values=c("control"="darkgray", "treated"="darkred"))+
+  theme_classic()
+```
+
+```{r}
+model<-lmer(value.mm ~ timepoint * temperature * spat_treatment + (1|date:plate:well) + (1|holding_tank) + (1|spat_treatment:tank), data=full_data)
+
+summary(model)
+car::Anova(model, type="II")
+#rand(model)
+
+qqPlot(residuals(model))
+```
+
+Residuals are violating normality. Attempt with cube root transformation. 
+
+```{r}
+model<-lmer((1+value.mm)^(1/3) ~ timepoint * temperature * spat_treatment + (1|date:plate:well) + (1|holding_tank) + (1|spat_treatment:tank), data=full_data)
+
+summary(model)
+anova(model)
+#rand(model)
+
+qqPlot(residuals(model))
+```
+
+View posthoc effects. 
+
+```{r}
+emm<-emmeans(model, ~spat_treatment|temperature|timepoint)
+pairs(emm)
+
+emm<-emmeans(model, ~spat_treatment|timepoint)
+pairs(emm)
+
+emm<-emmeans(model, ~timepoint|spat_treatment)
+pairs(emm)
+
+emm<-emmeans(model, ~temperature|timepoint)
+pairs(emm)
+```
+
+Treated and control rates are different at 36C and 40C.   
+
+## Plotting 
+
+Plot with individual points with geom smooth lines. 
+
+```{r}
+plot1<-full_data%>%
+
+  ggplot(aes(x=timepoint, y=value.mm, color=temperature, fill=temperature))+
+  facet_grid(~date*tank*holding_tank)+
+  geom_point(alpha=0.5)+
+  stat_smooth(aes(group=temperature))+
+  scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  scale_fill_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  theme_classic()+
+  xlab("Hour");plot1
+
+plot1a<-full_data%>%
+
+  ggplot(aes(x=timepoint, y=value.mm, color=temperature, fill=temperature, group=temperature))+
+  geom_point(alpha=0.5)+
+  stat_smooth(method="loess")+
+    scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  scale_fill_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  theme_classic()+
+  xlab("Hour");plot1a
+
+ggsave(plot1a, filename="figures/resazurin/batch2_metabolism_temperature.png", width=7, height=5)
+
+plot1b<-full_data%>%
+
+  ggplot(aes(x=timepoint, y=value.mm, color=tank, fill=tank))+
+  facet_grid(~temperature)+
+  geom_point(alpha=0.5)+
+  geom_smooth(aes(group=tank))+
+  theme_classic()+
+  xlab("Hour");plot1b
+
+
+plot1c<-full_data%>%
+
+  ggplot(aes(x=timepoint, y=value.mm, color=spat_treatment, fill=spat_treatment))+
+  facet_grid(~temperature)+
+  geom_smooth(aes(group=spat_treatment))+
+  scale_colour_manual(values=c("control"="cyan3", "treated"="coral1"), name="Parental \nTreatment")+
+  scale_fill_manual(values=c("control"="cyan3", "treated"="coral1"), name="Parental \nTreatment")+
+  theme_classic()+
+    theme(axis.text.y = element_text(size = 17)) +
+  theme(axis.text.x = element_text(size = 17))+
+ theme(axis.title.x = element_text(size = 17)) +
+   theme(axis.title.y = element_text(size = 17))+ 
+  ylab("Metabolic Rate")+
+  xlab("Hour");plot1c
+
+ggsave(plot1c, filename="figures/resazurin/batch2_metabolism_treatment.png", width=7, height=4)
+
+plot1d<-full_data%>%
+
+  ggplot(aes(x=timepoint, y=value.mm, color=temperature, fill=temperature, group=temperature))+
+  facet_grid(~spat_treatment)+
+  geom_point(alpha=0.5)+
+  stat_smooth(method="loess")+
+    scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  scale_fill_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  theme_classic()+
+  xlab("Hour");plot1d
+
+ggsave(plot1d, filename="figures/resazurin/batch2_metabolism_temperature_treatment.png", width=8, height=5)
+```
+
+# Survival 
+
+## Load data 
+
+```{r}
+surv<-read_csv("data/resazurin/survival-batch2.csv")%>%mutate(date=as.character(date))%>%select(!notes)
+```
+
+Merge with existing data. 
+
+```{r}
+full_data<-left_join(full_data, surv)
+```
+
+## Analyze survival 
+
+Analyze with binomial logistic regression for effects of temperature and spat treatment with tank as random effect. 
+
+0 = alive
+1 = mortality 
+
+```{r}
+surv_model_data<-full_data%>%
+  filter(timepoint=="4")
+  
+surv_model<-glmer(mortality ~ temperature * spat_treatment + (1|holding_tank) + (1|spat_treatment:tank), family = binomial(link = "logit"), data=surv_model_data)
+
+summary(surv_model)
+Anova(surv_model)
+```
+
+Plot model effects. 
+
+```{r}
+plot(Effect(c("spat_treatment", "temperature"), surv_model, residuals=TRUE))
+plot(Effect(c("temperature"), surv_model, residuals=TRUE))
+plot(Effect(c("spat_treatment"), surv_model, residuals=TRUE))
+```
+
+Generate predictive mortality. 
+
+```{r}
+# Generate predicted probabilities
+surv_model_data$predicted_mortality <- predict(surv_model, type = "response")
+
+# Plot
+plot2<-ggplot(surv_model_data, aes(x = temperature, y = predicted_mortality, color = spat_treatment, fill = spat_treatment, group=spat_treatment)) +
+  geom_point(aes(y = mortality), alpha = 0.6, position = position_jitter(height = 0.03)) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = TRUE) +
+  scale_colour_manual(values=c("darkgray", "darkred"))+
+  scale_fill_manual(values=c("darkgray", "darkred"))+
+  labs(
+    title = "",
+    y = "Probability of Mortality",
+  ) +
+  theme_classic();plot2
+
+ggsave(plot2, filename="figures/resazurin/batch2-mortality_treatment.png", width=6, height=5)
+
+# Plot
+plot2b<-ggplot(surv_model_data, aes(x = temperature, y = predicted_mortality)) +
+  geom_point(aes(y = mortality), alpha = 0.6, position = position_jitter(height = 0.03), colour="darkgray") +
+  geom_smooth(aes(group=1), method = "glm", method.args = list(family = "binomial"), se = TRUE, colour="black", fill="darkgray") +
+  #scale_colour_manual(values=c("darkgray", "darkred"))+
+  #scale_fill_manual(values=c("darkgray", "darkred"))+
+  labs(
+    title = "",
+    y = "Probability of Mortality",
+  ) +
+  theme_classic();plot2b
+
+
+ggsave(plot2b, filename="figures/resazurin/batch2-mortality_all.png", width=6, height=5)
+
+# Plot
+plot2a<-ggplot(surv_model_data, aes(x = spat_treatment, y = predicted_mortality, color = temperature, fill = temperature, group=temperature)) +
+  geom_point(aes(y = mortality), alpha = 0.6, position = position_jitter(height = 0.03)) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+    scale_colour_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  scale_fill_manual(values=c("20C"="cyan4", "36C"="purple2", "38C"="pink", "40C"="orange", "42C"="darkred"))+
+  labs(
+    title = "",
+    y = "Probability of Mortality",
+  ) +
+  theme_classic();plot2a
+
+ggsave(plot2a, filename="figures/resazurin/batch2-mortality_temperature.png", width=6, height=5)
+```
+
+Plot individual tanks. 
+
+```{r}
+# Plot
+plot3<-ggplot(surv_model_data, aes(x = temperature, y = predicted_mortality, color = tank, fill = tank, group=tank)) +
+  geom_point(aes(y = mortality), alpha = 0.6, position = position_jitter(height = 0.03)) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = TRUE) +
+  labs(
+    title = "",
+    y = "Probability of Mortality",
+  ) +
+  theme_classic();plot3
+```
+
+
+# Metabolic rates ~ mortality 
+
+Plot metabolic rates at 42°C (treatment with highest mortality) for those that lived and those that died in each treatment. 
+
+```{r}
+data_42C<-full_data%>%
+  filter(temperature=="42C")%>%
+  mutate(temperature_num = as.numeric(str_extract(temperature, "\\d+")))
+
+str(data_42C)
+```
+
+Plot
+
+```{r}
+plot4<-ggplot(data_42C, aes(x = timepoint, y = value.mm, color = as.factor(mortality), fill = as.factor(mortality))) +
+  facet_wrap(~spat_treatment)+
+  geom_point(alpha = 0.6, position = position_jitter(height = 0.03)) +
+  stat_smooth(aes(group=mortality)) +
+  scale_colour_manual(values=c("darkgray", "darkred"), labels=c("alive", "dead"), name="Mortality")+
+  scale_fill_manual(values=c("darkgray", "darkred"), labels=c("alive", "dead"), name="Mortality")+
+  labs(
+    title = "",
+    y = "Metabolic Rate",
+    x = "Hours"
+  ) +
+  theme_classic();plot4
+```
+
+Analyze the effect of mortality on metabolic rates. 
+```{r}
+mortality_model<-lmer(value.mm ~ timepoint * mortality * spat_treatment + (1|holding_tank) + (1|spat_treatment:tank), data=data_42C)
+
+summary(mortality_model)
+Anova(mortality_model)
+```
+
+Time and mortality are significant 
+
+Plot again without treatment. 
+
+```{r}
+plot4a<-ggplot(data_42C, aes(x = timepoint, y = value.mm, color = as.factor(mortality), fill = as.factor(mortality))) +
+  geom_point(alpha = 0.6, position = position_jitter(height = 0.03)) +
+  stat_smooth(aes(group=mortality)) +
+  scale_colour_manual(values=c("cyan4", "orange"), labels=c("alive", "dead"), name="Mortality")+
+  scale_fill_manual(values=c("cyan4", "orange"), labels=c("alive", "dead"), name="Mortality")+
+  labs(
+    title = "",
+    y = "Metabolic Rate",
+    x = "Hours"
+  ) +
+  theme_classic();plot4a
+
+ggsave(plot4a, filename="figures/resazurin/batch2-mortality_metabolic_rates_42C.png", width=5, height=5)
+```
+
+# Metabolic rates across thermal range 
+
+Calculate area under the curve 
+
+```{r}
+library(pracma)
+
+head(full_data)
+
+auc_data<-full_data%>%
+  mutate(time=as.numeric(timepoint))%>%
+  group_by(date, plate, well, temperature, spat_treatment, tank, holding_tank)%>%
+  summarise(AUC = trapz(time, value.mm))%>%
+  mutate(temperature_num = as.numeric(str_extract(temperature, "\\d+")))
+
+head(auc_data)
+```
+
+```{r}
+hist(auc_data$AUC)
+```
+
+
+Plot total metabolic activity for each treatment over the temperatures. 
+
+```{r}
+plot5<-ggplot(auc_data, aes(x = temperature, y = AUC, color = spat_treatment, fill = spat_treatment, group=spat_treatment)) +
+  geom_point(alpha = 0.6, position = position_jitter(height = 0.01)) +
+  stat_smooth(aes(group=spat_treatment)) +
+  scale_colour_manual(values = c("control" = "cyan3", "treated" = "coral1"), name="Parental \nTreatment")+
+  scale_fill_manual(values = c("control" = "cyan3", "treated" = "coral1"), name="Parental \nTreatment")+
+  labs(
+    title = "A",
+    y = "AUC",
+    x="Temperature"
+  ) +
+  theme_classic(base_size = 16);plot5
+
+
+```
+
+Analyze effect of temperature on AUC. 
+
+```{r}
+tpc_model<-lmer(log(1+AUC) ~ temperature * spat_treatment + (1|holding_tank)+ (1|plate:date) + (1|date), data=auc_data)
+
+summary(tpc_model)
+anova(tpc_model, type="II")
+qqPlot(residuals(tpc_model))
+
+plot(tpc_model, which = 1)   # Residuals vs fitted
+plot(tpc_model, which = 3)   # Scale-Location plot
+```
+
+Temperature x treatment is significant 
+
+```{r}
+emm<-emmeans(tpc_model, ~spat_treatment|temperature)
+pairs(emm)
+```
+
+Generate a model prediction plot. 
+```{r}
+# Create a grid of temperature and spat_treatment values
+pred_grid <- expand.grid(
+  temperature = levels(as.factor(auc_data$temperature)),
+  spat_treatment = levels(as.factor(auc_data$spat_treatment)),  # use levels to ensure factor
+  holding_tank = NA  # we will ignore random effect
+)
+
+# Make spat_treatment a factor
+pred_grid$spat_treatment <- factor(pred_grid$spat_treatment, levels = levels(as.factor(auc_data$spat_treatment)))
+pred_grid$temperature <- factor(pred_grid$temperature, levels = levels(as.factor(auc_data$temperature)))
+
+# Predicted values (log scale)
+pred_grid$logAUC_pred <- predict(tpc_model, newdata = pred_grid, re.form = NA)
+
+# Back-transform to original AUC scale
+pred_grid$AUC_pred <- exp(pred_grid$logAUC_pred) - 1
+
+plot5 <- ggplot() +
+  # Raw points
+  geom_point(data = auc_data,
+             aes(x = temperature, y = AUC, color = spat_treatment),
+             alpha = 0.3, position = position_jitter(height = 0.01)) +
+  # Model predicted lines
+  geom_line(data = pred_grid,
+            aes(x = temperature, y = AUC_pred, color = spat_treatment, group = spat_treatment),
+            linewidth = 1.5) +
+  # Colors
+  scale_colour_manual(values = c("control" = "cyan3", "treated" = "coral1"),
+                      name = "Parental \nTreatment") +
+  scale_fill_manual(values = c("control" = "cyan3", "treated" = "coral1"),
+                    name = "Parental \nTreatment") +
+  # Labels & theme
+  labs(title = "A", y = "AUC", x = "Temperature") +
+  # Significance label above last temperature
+  geom_text(data = data.frame(temperature = "40C", AUC = 9),
+            aes(x = temperature, y = AUC, label = "*"),
+            size = 8, inherit.aes = FALSE) +
+  geom_text(data = data.frame(temperature = "36C", AUC = 9),
+            aes(x = temperature, y = AUC, label = "*"),
+            size = 8, inherit.aes = FALSE) +
+  theme_classic(base_size = 16);plot5
+
+ggsave(plot5, filename="figures/resazurin/auc-temperatures.png", width=7, height=5)
+```
+
+Calculate percent difference. 
+
+```{r}
+auc_data%>%
+  group_by(temperature, spat_treatment)%>%
+  summarise(mean=mean(AUC, na.rm=TRUE))%>%
+  pivot_wider(names_from = spat_treatment, values_from = mean)%>%
+  mutate(perc_diff=(control-treated)/control*100)
+```
+

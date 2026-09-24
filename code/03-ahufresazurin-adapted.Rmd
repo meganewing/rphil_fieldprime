@@ -1,0 +1,702 @@
+---
+title: APC cockle resazurin analysis
+author: "Sam White"
+date: '2026'
+output:
+  github_document: null
+  md_document: default
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 6
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+This script analyzes resazurin assays for APC cockle spat. Treatments
+are decoded as a 2x2 factorial: Immune_Priming (Yes/No) x Heat_Priming
+(Yes/No), derived from treatment codes CC, EE, CP, EP. Metadata is
+provided via layout.csv.
+
+Treatment key: CC = Immune No / Heat No (control) EE = Immune No / Heat
+Yes (heat priming only) CP = Immune Yes / Heat No (immune priming only)
+EP = Immune Yes / Heat Yes (combined)
+
+# Set up
+
+Set up workspace, set options, and load required packages.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r libraries}
+library(tidyverse)   # data wrangling and plotting
+library(MASS)        # statistical functions (load before tidyverse to avoid select() conflict)
+select <- dplyr::select  # restore dplyr::select after MASS masks it
+library(ggplot2)     # plotting
+library(readxl)      # reading Excel files
+library(cowplot)     # plot composition
+library(lme4)        # mixed effects models
+library(lmerTest)    # p-values for lmer via Satterthwaite approximation
+library(car)         # Type II/III ANOVA for mixed models
+library(effects)     # model effect plots
+library(emmeans)     # estimated marginal means and pairwise contrasts
+library(tools)       # file utility functions (file_path_sans_ext)
+library(pracma)      # trapz() for AUC calculation
+```
+
+# Configuration
+
+Specify input data and output directory paths here. Update these before
+running.
+
+```{r config}
+# ── INPUT ─────────────────────────────────────────────────────────────────────
+# Folder containing APC plate .txt files and layout.csv
+data_dir <- "data/resassay_SP1/AP_cockle_final"
+
+# ── OUTPUT ────────────────────────────────────────────────────────────────────
+# Directory for saved figures
+fig_dir  <- "output/AP_cockles_SP1_pink/figures/ah"
+
+# Create output directories if they don't already exist
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+# Treatment lookup table
+
+Maps 2-letter treatment codes to 2x2 factorial factor levels. Used
+downstream to decode treatment_group into Immune_Priming and
+Heat_Priming columns.
+
+```{r treatment-lookup}
+TREATMENT_INFO <- list(
+  "CC" = c(Immune_Priming = "No",  Heat_Priming = "No"),   # control
+  "EE" = c(Immune_Priming = "No",  Heat_Priming = "Yes"),  # heat priming only
+  "CP" = c(Immune_Priming = "Yes", Heat_Priming = "No"),   # immune priming only
+  "EP" = c(Immune_Priming = "Yes", Heat_Priming = "Yes")   # combined
+)
+
+# Shared colour palette for the 4 treatment combinations; used in all plots
+trt_colours <- c(
+  "Control"      = "blue4",       # CC
+  "Immune Only"  = "forestgreen", # CP
+  "Heat Only"    = "red",      # EE
+  "Combined"     = "orange"      # EP
+)
+```
+
+# Resazurin metabolic rates (individual)
+
+## Load data
+
+```{r load-plates}
+# Match only APC-***-##-T#.txt files; excludes layout.csv and other files
+file_list <- list.files(
+  path = data_dir,
+  pattern = "^APC-[A-Z]+[0-9]+-[0-9]+-T[0-9]+\\.txt$",
+  full.names = TRUE
+)
+
+# Stop early if no files found rather than silently producing empty output
+if (length(file_list) == 0) {
+  stop("No matching txt files found in the specified folder. Check the folder path.")
+}
+
+data_list <- list()  # accumulate parsed data frames here
+
+for (file in file_list) {
+  if (!is.character(file)) next  # skip non-character entries (safety check)
+
+  file_name <- file_path_sans_ext(basename(file))  # e.g. "APC-CC1-26-T0"
+
+  # Scan for the "Results" section header in the plate reader export
+  lines       <- readLines(file, warn = FALSE)
+  results_idx <- which(trimws(lines) == "Results")
+  if (length(results_idx) == 0) next  # skip files with no Results block
+  idx <- results_idx[1]               # use first Results block if multiple
+
+  # Read the tab-delimited data starting at the Results block
+  data <- read.delim(file, header = FALSE, skip = idx,
+                     stringsAsFactors = FALSE, fill = TRUE)
+
+  # Promote the first data row (column numbers) to column names
+  col_header    <- as.character(unlist(data[1, ]))
+  col_header[1] <- "Row"           # first cell is blank; label it "Row"
+  colnames(data) <- col_header
+  data <- data[-1, ]               # drop the now-redundant header row
+  data <- data[, colnames(data) != ""]  # drop empty trailing columns
+
+  # Keep only true plate rows (single letters A–D for a 24-well plate)
+  data <- data %>% filter(str_detect(Row, "^[A-Za-z]$"))
+
+  # Pivot to long format: one row per well per file
+  data_long <- data %>%
+    pivot_longer(cols = -Row, names_to = "Column", values_to = "Value") %>%
+    mutate(
+      Value      = suppressWarnings(as.numeric(Value)),  # coerce to numeric; non-numeric -> NA
+      plate_well = paste0(toupper(Row), Column),         # well ID e.g. "A2", "B3"
+      FileName   = file_name,
+      plate_ID   = str_remove(file_name, "-T[0-9]+$"),  # strip timepoint suffix e.g. "APC-CC1-26"
+      timepoint  = str_extract(file_name, "T([0-9]+)$") %>%
+        str_remove("T") %>% as.numeric()                # extract numeric timepoint
+    ) %>%
+    filter(!is.na(Value)) %>%                           # drop wells with no reading
+    select(FileName, plate_well, Value, plate_ID, timepoint)
+
+  data_list[[file_name]] <- data_long
+}
+
+head(data_list[[file_name]])  # preview last parsed file
+
+# Stack all per-file data frames into one
+combined_data <- bind_rows(data_list, .id = "Source")
+
+combined_data <- combined_data %>%
+  rename(resazurin_counts = Value) %>%       # rename for clarity
+  mutate(timepoint = as.character(timepoint)) # keep timepoint as character for grouping
+
+head(combined_data)
+```
+
+## Load metadata
+
+```{r load-metadata}
+# Read layout.csv; treat all columns as character initially for safe parsing
+metadata <- read_csv(file.path(data_dir, "layout.csv"),
+                     col_types = cols(.default = "c"),
+                     show_col_types = FALSE) %>%
+  mutate(
+    # Parse is_blank: accept TRUE/T/1/YES/Y (case-insensitive) as TRUE
+    is_blank = toupper(trimws(is_blank)) %in% c("TRUE", "T", "1", "YES", "Y"),
+    # Parse exclude_from_analysis the same way
+    exclude_from_analysis = toupper(trimws(exclude_from_analysis)) %in%
+      c("TRUE", "T", "1", "YES", "Y"),
+    temperature = as.character(temperature),
+    # Derive a type column to match the original script's "blank"/"sample" logic
+    type = if_else(is_blank, "blank", "sample")
+  )
+```
+
+## Join plate data with metadata
+
+```{r join-data}
+str(combined_data)
+str(metadata)
+
+# Left join: every plate well gets its metadata; wells with no layout entry are dropped
+full_data <- left_join(combined_data, metadata,
+                       by = c("plate_ID", "plate_well")) %>%
+  filter(!is.na(type))  # drop wells not present in layout
+
+head(full_data)
+```
+
+## Add size and exclude flagged individuals
+
+```{r size-and-exclusions}
+# area_mm2.measurement from layout.csv is the size proxy; rename for downstream compatibility
+full_data <- full_data %>%
+  mutate(length.mm = suppressWarnings(as.numeric(area_mm2.measurement)))
+
+# Report excluded wells before dropping them
+excluded_wells <- full_data %>%
+  filter(exclude_from_analysis == TRUE) %>%
+  mutate(
+    # Use sample_id_group as label if present; otherwise fall back to plate+well
+    sample = if_else(
+      !is.na(sample_id_group) & trimws(as.character(sample_id_group)) != "",
+      as.character(sample_id_group),
+      paste(plate_ID, plate_well, sep = "_")
+    )
+  ) %>%
+  select(plate_ID, plate_well, sample, fieldrep_ID, treatment_group,
+         any_of("exclude_reason")) %>%
+  distinct() %>%
+  arrange(plate_ID, plate_well)
+```
+
+```{r excluded-wells, results='asis'}
+if (nrow(excluded_wells) > 0) {
+  # Build col_names dynamically so count always matches ncol(excluded_wells)
+  col_map <- c(
+    plate_ID        = "Plate",
+    plate_well      = "Well",
+    sample          = "Sample",
+    fieldrep_ID     = "Family",
+    treatment_group = "Treatment",
+    exclude_reason  = "Reason"
+  )
+  col_names <- col_map[names(col_map) %in% names(excluded_wells)]
+  cat(knitr::kable(excluded_wells, col.names = col_names), sep = "\n")
+} else {
+  cat("No wells are excluded from analysis.\n")
+}
+```
+
+```{r apply-exclusions}
+# Remove excluded individuals from all downstream calculations
+full_data <- full_data %>%
+  filter(is.na(exclude_from_analysis) | exclude_from_analysis == FALSE)
+```
+
+## Decode 2x2 factorial treatment structure
+
+```{r factorial-decode}
+# Decode treatment_group (CC/EE/CP/EP) into two binary factors.
+# This is the key step that enables Immune_Priming * Heat_Priming models.
+full_data <- full_data %>%
+  mutate(
+    Immune_Priming = factor(
+      sapply(toupper(treatment_group), function(trt) {
+        info <- TREATMENT_INFO[[trt]]
+        if (is.null(info)) NA_character_ else info["Immune_Priming"]
+      }),
+      levels = c("No", "Yes")  # "No" as reference level
+    ),
+    Heat_Priming = factor(
+      sapply(toupper(treatment_group), function(trt) {
+        info <- TREATMENT_INFO[[trt]]
+        if (is.null(info)) NA_character_ else info["Heat_Priming"]
+      }),
+      levels = c("No", "Yes")  # "No" as reference level
+    ),
+    # Human-readable treatment label for plots
+    Treatment = case_when(
+      Immune_Priming == "No"  & Heat_Priming == "No"  ~ "Control",
+      Immune_Priming == "Yes" & Heat_Priming == "No"  ~ "Immune Only",
+      Immune_Priming == "No"  & Heat_Priming == "Yes" ~ "Heat Only",
+      Immune_Priming == "Yes" & Heat_Priming == "Yes" ~ "Combined"
+    )
+  )
+
+# Confirm decoding worked
+table(full_data$treatment_group, full_data$Treatment, useNA = "always")
+```
+
+## Prep the data
+
+```{r plot-raw}
+# Raw fluorescence by plate — colour by Treatment to check plate layout visually
+full_data %>%
+  ggplot(aes(x = timepoint, y = resazurin_counts,
+             colour = Treatment,
+             group = interaction(plate_ID, plate_well))) +
+  facet_wrap(~ plate_ID) +
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values = trt_colours) +
+  theme_classic()
+```
+
+```{r fold-change}
+# Normalise each well's fluorescence to its own T0 value (fold-change from baseline).
+# group_by ensures the first() call is taken within each individual well's time series.
+full_data <- full_data %>%
+  group_by(plate_ID, plate_well, temperature, treatment_group,
+           Immune_Priming, Heat_Priming, Treatment, fieldrep_ID, plate_rep) %>%
+  arrange(plate_ID, plate_well, as.numeric(timepoint)) %>%
+  mutate(fluorescence.norm = resazurin_counts / first(resazurin_counts))
+```
+
+```{r plot-norm}
+# Fold-change traces by plate — quick check for outlier wells or bad timepoints
+full_data %>%
+  ggplot(aes(x = timepoint, y = fluorescence.norm,
+             colour = Treatment,
+             group = interaction(plate_ID, plate_well))) +
+  facet_wrap(~ plate_ID) +
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values = trt_colours) +
+  theme_classic()
+```
+
+```{r view-blanks}
+# Inspect blank well traces to assess background drift before subtraction
+full_data %>%
+  filter(type == "blank") %>%
+  ggplot(aes(x = timepoint, y = fluorescence.norm,
+             colour = plate_ID,
+             group = interaction(plate_ID, plate_well))) +
+  facet_wrap(~ plate_ID) +
+  geom_point() +
+  geom_line() +
+  theme_classic()
+```
+
+```{r blank-means}
+# Compute mean blank fold-change per plate per timepoint.
+# This is the background correction value that will be subtracted from each sample.
+blanks <- full_data %>%
+  filter(type == "blank") %>%
+  group_by(plate_ID, temperature, timepoint) %>%
+  summarise(mean_blank = mean(fluorescence.norm, na.rm = TRUE), .groups = "drop")
+blanks
+```
+
+```{r plot-blank-means}
+# Plot mean blank by plate — should be close to 1.0 with minimal drift
+blanks %>%
+  ggplot(aes(x = timepoint, y = mean_blank, colour = plate_ID, group = plate_ID)) +
+  geom_point() +
+  geom_line() +
+  theme_classic()
+```
+
+```{r blank-subtract}
+# Join per-plate blank means onto full_data, then subtract from sample fold-change.
+# Removes background fluorescence drift; all wells start at ~0 at T0 by construction.
+full_data <- left_join(full_data, blanks, by = c("plate_ID", "temperature", "timepoint"))
+
+full_data <- full_data %>%
+  filter(type != "blank") %>%           # drop blank wells from analysis data
+  mutate(value = fluorescence.norm - mean_blank)  # blank-corrected fold-change
+```
+
+```{r plot-corrected}
+# Blank-corrected fold-change by plate — check that correction looks reasonable
+full_data %>%
+  ggplot(aes(x = timepoint, y = value,
+             colour = Treatment,
+             group = interaction(plate_ID, plate_well))) +
+  facet_wrap(~ plate_ID) +
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values = trt_colours) +
+  theme_classic()
+```
+
+```{r size-normalise}
+# Divide blank-corrected fold-change by individual area (mm²) to get
+# size-normalised metabolic rate (value.mm = fold-change per mm²)
+full_data <- full_data %>%
+  mutate(value.mm = value / length.mm)
+```
+
+```{r plot-size-normalised}
+# Size-normalised metabolic rate by plate
+full_data %>%
+  ggplot(aes(x = timepoint, y = value.mm,
+             colour = Treatment,
+             group = interaction(plate_ID, plate_well))) +
+  facet_wrap(~ plate_ID) +
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values = trt_colours) +
+  theme_classic()
+```
+
+```{r remove-cols}
+# Drop intermediate columns no longer needed to keep full_data tidy
+full_data <- full_data %>%
+  select(!resazurin_counts) %>%  # raw counts replaced by normalised values
+  select(!FileName) %>%          # file provenance no longer needed
+  select(!type) %>%              # blank/sample flag no longer needed
+  select(!fluorescence.norm) %>% # intermediate normalisation step
+  select(!mean_blank)            # blank correction value no longer needed
+```
+
+## Models
+
+```{r plot-by-treatment}
+# Metabolic rate traces faceted by Treatment — visual check before modelling
+full_data %>%
+  ggplot(aes(x = timepoint, y = value.mm,
+             colour = temperature,
+             group = interaction(plate_ID, plate_well))) +
+  facet_wrap(~ Treatment) +
+  geom_point() +
+  geom_line() +
+  theme_classic()
+```
+
+```{r plot-by-temp}
+# Metabolic rate traces faceted by temperature — colour by Treatment
+full_data %>%
+  ggplot(aes(x = timepoint, y = value.mm,
+             colour = Treatment,
+             group = interaction(plate_ID, plate_well))) +
+  facet_wrap(~ temperature) +
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values = trt_colours) +
+  theme_classic()
+```
+
+```{r model-initial}
+# Initial LME: 2x2 factorial fixed effects (Immune x Heat x timepoint).
+# Random effects: plate_ID:plate_well accounts for repeated measures on the same well
+# across timepoints; fieldrep_ID accounts for family-level variation.
+model <- lmer(value.mm ~ timepoint * Immune_Priming * Heat_Priming +
+                (1 | plate_ID:plate_well) +
+                (1 | fieldrep_ID),
+              data = full_data)
+
+summary(model)
+car::Anova(model, type = "II")  # Type II ANOVA: tests main effects + interactions
+qqPlot(residuals(model))        # check normality of residuals
+```
+
+```{r model-cuberoot}
+# Residuals often non-normal for fluorescence data; cube-root transformation
+# (1 + value.mm)^(1/3) compresses positive skew while keeping values >= 0.
+model <- lmer((1 + value.mm)^(1/3) ~ timepoint * Immune_Priming * Heat_Priming +
+                (1 | plate_ID:plate_well) +
+                (1 | fieldrep_ID),
+              data = full_data)
+
+summary(model)
+anova(model)          # Satterthwaite F-tests from lmerTest
+qqPlot(residuals(model))
+```
+
+```{r posthoc-timeseries}
+# Pairwise contrasts for the 2x2 factorial at each timepoint.
+# Tukey adjustment controls family-wise error rate across all comparisons.
+
+# Both factors combined: all 4 treatment combinations vs each other at each timepoint
+emm <- emmeans(model, ~ Immune_Priming * Heat_Priming | timepoint)
+pairs(emm, adjust = "tukey")
+
+# Main effect of immune priming (collapsed across heat priming levels) at each timepoint
+emm <- emmeans(model, ~ Immune_Priming | timepoint)
+pairs(emm, adjust = "tukey")
+
+# Main effect of heat priming (collapsed across immune priming levels) at each timepoint
+emm <- emmeans(model, ~ Heat_Priming | timepoint)
+pairs(emm, adjust = "tukey")
+
+# Temperature effect at each timepoint (not a treatment factor — for reference only)
+emm <- emmeans(model, ~ temperature | timepoint)
+pairs(emm, adjust = "tukey")
+```
+
+## Plotting
+
+```{r plot1-by-family}
+# Metabolic rate by family (fieldrep_ID) and plate replicate — useful for
+# diagnosing family-level or plate-level effects before interpreting treatment effects
+plot1 <- full_data %>%
+  ggplot(aes(x = timepoint, y = value.mm,
+             color = Treatment, fill = Treatment)) +
+  facet_grid(~ fieldrep_ID * plate_rep) +
+  geom_point(alpha = 0.5) +
+  stat_smooth(aes(group = Treatment)) +
+  scale_colour_manual(values = trt_colours) +
+  scale_fill_manual(values = trt_colours) +
+  theme_classic() +
+  xlab("Hour")
+plot1
+```
+
+```{r plot1a-treatment-overall}
+# Overall metabolic rate by Treatment across all plates and temperatures
+# loess smoother shows the average trajectory per treatment group
+plot1a <- full_data %>%
+  ggplot(aes(x = timepoint, y = value.mm,
+             color = Treatment, fill = Treatment, group = Treatment)) +
+  geom_point(alpha = 0.5) +
+  stat_smooth(method = "loess") +
+  scale_colour_manual(values = trt_colours) +
+  scale_fill_manual(values = trt_colours) +
+  theme_classic() +
+  xlab("Hour")
+plot1a
+
+ggsave(plot1a, filename = file.path(fig_dir, "metabolism_treatment.png"), width = 7, height = 5)
+```
+
+```{r plot1b-by-family-temp}
+# Metabolic rate by family (fieldrep_ID) faceted by temperature —
+# helps visualise whether family effects are consistent across temperatures
+plot1b <- full_data %>%
+  ggplot(aes(x = timepoint, y = value.mm,
+             color = fieldrep_ID, fill = fieldrep_ID)) +
+  facet_grid(~ temperature) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(aes(group = fieldrep_ID)) +
+  theme_classic() +
+  xlab("Hour")
+plot1b
+```
+
+```{r plot1c-treatment-by-temp}
+# Treatment effect on metabolic rate at each temperature — key visualisation
+# for the Immune_Priming x Heat_Priming x temperature interaction
+plot1c <- full_data %>%
+  ggplot(aes(x = timepoint, y = value.mm,
+             color = Treatment, fill = Treatment)) +
+  facet_grid(~ temperature) +
+  geom_smooth(aes(group = Treatment)) +
+  scale_colour_manual(values = trt_colours, name = "Priming Treatment") +
+  scale_fill_manual(values = trt_colours, name = "Priming Treatment") +
+  theme_classic() +
+  theme(axis.text.y  = element_text(size = 17),
+        axis.text.x  = element_text(size = 17),
+        axis.title.x = element_text(size = 17),
+        axis.title.y = element_text(size = 17)) +
+  ylab("Metabolic Rate") +
+  xlab("Hour")
+plot1c
+
+ggsave(plot1c, filename = file.path(fig_dir, "metabolism_treatment_by_temp.png"), width = 7, height = 4)
+```
+
+```{r plot1d-temp-by-treatment}
+# Temperature effect on metabolic rate within each treatment —
+# complements plot1c by swapping the faceting and colour variables
+plot1d <- full_data %>%
+  ggplot(aes(x = timepoint, y = value.mm,
+             color = temperature, fill = temperature, group = temperature)) +
+  facet_grid(~ Treatment) +
+  geom_point(alpha = 0.5) +
+  stat_smooth(method = "loess") +
+  theme_classic() +
+  xlab("Hour")
+plot1d
+
+ggsave(plot1d, filename = file.path(fig_dir, "metabolism_temperature_by_treatment.png"), width = 8, height = 5)
+```
+
+# Survival
+
+```{r survival-stub}
+# NOTE: No separate survival file for this dataset.
+# To enable survival analysis: add a 'mortality' column (0 = alive, 1 = dead)
+# to layout.csv, then model with:
+#   glmer(mortality ~ temperature * Immune_Priming * Heat_Priming +
+#           (1 | plate_rep) + (1 | fieldrep_ID),
+#         family = binomial(link = "logit"), data = surv_model_data)
+message("Survival data not available in layout.csv; skipping survival sections.")
+```
+
+# Metabolic rates across thermal range (AUC)
+
+AUC summarises total metabolic activity per individual across all
+timepoints. A larger AUC = more cumulative metabolic activity over the
+assay period.
+
+```{r auc-calc}
+# Compute trapezoidal AUC per individual (plate_ID x plate_well).
+# Carry Immune_Priming, Heat_Priming, and Treatment through for modelling and plotting.
+auc_data <- full_data %>%
+  mutate(time = as.numeric(timepoint)) %>%
+  group_by(plate_ID, plate_well, temperature, treatment_group,
+           Immune_Priming, Heat_Priming, Treatment, fieldrep_ID, plate_rep) %>%
+  summarise(AUC = trapz(time, value.mm), .groups = "drop") %>%  # trapezoid rule
+  mutate(temperature_num = as.numeric(temperature))  # numeric temperature for ordering
+
+head(auc_data)
+```
+
+```{r auc-hist}
+hist(auc_data$AUC)  # check distribution; heavy skew may warrant log transformation
+```
+
+```{r plot5-auc-raw}
+# Raw AUC points by Treatment and temperature — preliminary look before modelling
+plot5 <- ggplot(auc_data, aes(x = temperature, y = AUC,
+                              color = Treatment, fill = Treatment,
+                              group = Treatment)) +
+  geom_point(alpha = 0.6, position = position_jitter(height = 0.01)) +
+  stat_smooth(aes(group = Treatment)) +
+  scale_colour_manual(values = trt_colours, name = "Priming Treatment") +
+  scale_fill_manual(values = trt_colours, name = "Priming Treatment") +
+  labs(title = "A", y = "AUC", x = "Temperature") +
+  theme_classic(base_size = 16)
+plot5
+```
+
+```{r auc-model}
+# 2x2 factorial AUC model: log(1+AUC) to address positive skew.
+# Fixed: temperature * Immune_Priming * Heat_Priming (full factorial + temperature interaction).
+# Random: fieldrep_ID (family), plate_ID (assay plate variation).
+tpc_model <- lmer(log(1 + AUC) ~ temperature * Immune_Priming * Heat_Priming +
+                    (1 | fieldrep_ID) +
+                    (1 | plate_ID),
+                  data = auc_data)
+
+summary(tpc_model)
+anova(tpc_model, type = "II")  # Type II ANOVA from lmerTest
+qqPlot(residuals(tpc_model))   # normality check
+plot(tpc_model, which = 1)     # residuals vs fitted (check homoscedasticity)
+plot(tpc_model, which = 3)     # scale-location plot
+```
+
+```{r auc-posthoc}
+# Pairwise contrasts for all 4 treatment combinations at each temperature
+emm <- emmeans(tpc_model, ~ Immune_Priming * Heat_Priming | temperature)
+pairs(emm, adjust = "tukey")
+
+# Main effect of immune priming at each temperature (collapsed across heat priming)
+emm <- emmeans(tpc_model, ~ Immune_Priming | temperature)
+pairs(emm, adjust = "tukey")
+
+# Main effect of heat priming at each temperature (collapsed across immune priming)
+emm <- emmeans(tpc_model, ~ Heat_Priming | temperature)
+pairs(emm, adjust = "tukey")
+```
+
+```{r auc-pred-grid}
+# Build a prediction grid covering all temperature x Immune_Priming x Heat_Priming
+# combinations; set random effects to NA so predictions are marginal (population-level)
+pred_grid <- expand.grid(
+  temperature    = levels(as.factor(auc_data$temperature)),
+  Immune_Priming = levels(auc_data$Immune_Priming),
+  Heat_Priming   = levels(auc_data$Heat_Priming),
+  fieldrep_ID    = NA   # marginal prediction; ignore random effect
+) %>%
+  mutate(
+    temperature    = factor(temperature, levels = levels(as.factor(auc_data$temperature))),
+    Immune_Priming = factor(Immune_Priming, levels = c("No", "Yes")),
+    Heat_Priming   = factor(Heat_Priming,   levels = c("No", "Yes")),
+    # Add Treatment label for colour mapping in the plot
+    Treatment = case_when(
+      Immune_Priming == "No"  & Heat_Priming == "No"  ~ "Control",
+      Immune_Priming == "Yes" & Heat_Priming == "No"  ~ "Immune Only",
+      Immune_Priming == "No"  & Heat_Priming == "Yes" ~ "Heat Only",
+      Immune_Priming == "Yes" & Heat_Priming == "Yes" ~ "Combined"
+    )
+  )
+
+# Predict on log scale (re.form = NA = marginal/population-level prediction)
+pred_grid$logAUC_pred <- predict(tpc_model, newdata = pred_grid, re.form = NA)
+
+# Back-transform from log(1+AUC) to AUC scale
+pred_grid$AUC_pred <- exp(pred_grid$logAUC_pred) - 1
+```
+
+```{r plot5-auc-model}
+# Model prediction plot: raw data as jittered points, model predictions as lines.
+# Separates the 4 treatment combinations by colour using the shared trt_colours palette.
+plot5 <- ggplot() +
+  # Raw individual AUC values (semi-transparent to show density)
+  geom_point(data = auc_data,
+             aes(x = temperature, y = AUC, color = Treatment),
+             alpha = 0.3, position = position_jitter(height = 0.01)) +
+  # Model-predicted AUC trajectory per treatment across temperatures
+  geom_line(data = pred_grid,
+            aes(x = temperature, y = AUC_pred,
+                color = Treatment, group = Treatment),
+            linewidth = 1.5) +
+  scale_colour_manual(values = trt_colours, name = "Priming Treatment") +
+  labs(title = "A", y = "AUC", x = "Temperature") +
+  theme_classic(base_size = 16)
+plot5
+
+ggsave(plot5, filename = file.path(fig_dir, "auc-temperatures.png"), width = 7, height = 5)
+```
+
+```{r auc-summary}
+# Group-level mean AUC summary table: one column per treatment, one row per temperature.
+# Useful for reporting and calculating percent differences between groups.
+auc_data %>%
+  group_by(temperature, Treatment) %>%
+  summarise(mean = mean(AUC, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = Treatment, values_from = mean)
+```
