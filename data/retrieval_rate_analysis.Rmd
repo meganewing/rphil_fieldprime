@@ -1,0 +1,329 @@
+---
+title: "Retrieval Rate Analysis: 2x2 Factorial Priming Experiment"
+author: ""
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Overview
+
+This script analyses retrieval rates from a **2×2 factorial priming experiment** at two independent sample points (SP1 and SP2). The two factors are:
+
+- **Heat priming** (No / Yes)
+- **Immune priming** (No / Yes)
+
+Each sample point is analysed independently using a **binomial GLM** (logit link). The response is the number of individuals retrieved out of those deployed.
+
+---
+
+# 1. Load Packages
+
+```{r packages}
+library(tidyverse)
+library(emmeans)
+library(ggplot2)
+```
+
+---
+
+# 2. Load & Prepare Data
+
+```{r data}
+raw <- read.csv("fieldsurvival-APC.csv")
+
+# Helper to build a clean analysis-ready data frame for one sample point
+make_sp <- function(df, sp) {
+  ret_col  <- paste0("Retrieved_", sp)
+  dep_col  <- paste0("Deployed_",  sp)
+  data.frame(
+    priming_treatment = factor(df$Priming_Treatment,
+                               levels = c("Control", "Heat", "Immune", "Combination")),
+    heat   = c(0, 1, 0, 1),
+    immune = c(0, 0, 1, 1),
+    retrieved = df[[ret_col]],
+    deployed  = df[[dep_col]]
+  ) %>%
+    mutate(
+      rate         = retrieved / deployed,
+      heat_label   = factor(ifelse(heat   == 1, "Heat",      "No Heat"),
+                            levels = c("No Heat",   "Heat")),
+      immune_label = factor(ifelse(immune == 1, "Immune",    "No Immune"),
+                            levels = c("No Immune", "Immune"))
+    )
+}
+
+sp1 <- make_sp(raw, "SP1")
+sp2 <- make_sp(raw, "SP2")
+```
+
+```{r data-preview}
+knitr::kable(sp1 %>% select(priming_treatment, heat_label, immune_label,
+                             retrieved, deployed, rate),
+             digits = 3, caption = "Sample Point 1 — raw data")
+
+knitr::kable(sp2 %>% select(priming_treatment, heat_label, immune_label,
+                             retrieved, deployed, rate),
+             digits = 3, caption = "Sample Point 2 — raw data")
+```
+
+---
+
+# 3. Sample Point 1
+
+> **Note:** With one observation per cell, the saturated model has zero residual df and the interaction is confounded with residual error. The additive model is fitted and compared to the full model; interpret accordingly.
+
+## 3.1 Full Factorial Model
+
+```{r sp1-model-full}
+sp1_full <- glm(
+  cbind(retrieved, deployed - retrieved) ~ heat * immune,
+  data   = sp1,
+  family = binomial(link = "logit")
+)
+summary(sp1_full)
+```
+
+## 3.2 Additive Model
+
+```{r sp1-model-add}
+sp1_add <- glm(
+  cbind(retrieved, deployed - retrieved) ~ heat + immune,
+  data   = sp1,
+  family = binomial(link = "logit")
+)
+summary(sp1_add)
+anova(sp1_add, test = "Chisq")
+```
+
+## 3.3 Model Comparison (interaction test)
+
+```{r sp1-model-compare}
+anova(sp1_add, sp1_full, test = "Chisq")
+```
+
+## 3.4 Estimated Marginal Means & Pairwise Contrasts
+
+```{r sp1-emmeans}
+sp1_emm <- emmeans(sp1_add, ~ heat * immune, type = "response")
+sp1_emm
+
+knitr::kable(
+  as.data.frame(pairs(sp1_emm, adjust = "tukey")),
+  digits  = 4,
+  caption = "SP1 — pairwise contrasts (Tukey-adjusted)"
+)
+```
+
+## 3.5 Interaction Plot
+
+```{r sp1-plot, fig.width=6, fig.height=4}
+sp1 %>%
+  mutate(predicted = predict(sp1_add, type = "response")) %>%
+  ggplot(aes(x = heat_label, colour = immune_label, group = immune_label)) +
+  geom_line(aes(y = predicted), linetype = "dashed", linewidth = 0.8) +
+  geom_point(aes(y = rate), size = 4) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.55)) +
+  scale_colour_manual(values = c("No Immune" = "#2196F3", "Immune" = "#F44336")) +
+  labs(
+    title    = "SP1 — Retrieval Rate by Priming Treatment",
+    subtitle = "Points = observed; dashed = additive model predictions",
+    x        = "Heat Priming", y = "Retrieval Rate", colour = "Immune Priming"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "top")
+```
+
+## 3.6 Bar Chart
+
+```{r sp1-bar, fig.width=6, fig.height=4}
+ggplot(sp1, aes(x = priming_treatment, y = rate, fill = priming_treatment)) +
+  geom_col(width = 0.6, colour = "white") +
+  geom_text(aes(label = paste0(retrieved, "/", deployed)),
+            vjust = -0.5, size = 3.5) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.55)) +
+  scale_fill_manual(values = c(
+    "Control"     = "#90CAF9",
+    "Heat"        = "#EF9A9A",
+    "Immune"      = "#A5D6A7",
+    "Combination" = "#CE93D8"
+  )) +
+  labs(title = "SP1 — Observed Retrieval Rates",
+       x = "Priming Treatment", y = "Retrieval Rate") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+---
+
+# 4. Sample Point 2
+
+> **Note:** Deployment sizes differ across treatments at SP2 (Control = 150, Heat = 240, Immune = 180, Combination = 120), so raw counts are not directly comparable — the binomial GLM accounts for this automatically via the offset implicit in `cbind(retrieved, deployed - retrieved)`.
+
+## 4.1 Full Factorial Model
+
+```{r sp2-model-full}
+sp2_full <- glm(
+  cbind(retrieved, deployed - retrieved) ~ heat * immune,
+  data   = sp2,
+  family = binomial(link = "logit")
+)
+summary(sp2_full)
+```
+
+## 4.2 Additive Model
+
+```{r sp2-model-add}
+sp2_add <- glm(
+  cbind(retrieved, deployed - retrieved) ~ heat + immune,
+  data   = sp2,
+  family = binomial(link = "logit")
+)
+summary(sp2_add)
+anova(sp2_add, test = "Chisq")
+```
+
+## 4.3 Model Comparison (interaction test)
+
+```{r sp2-model-compare}
+anova(sp2_add, sp2_full, test = "Chisq")
+```
+
+## 4.4 Estimated Marginal Means & Pairwise Contrasts
+
+```{r sp2-emmeans}
+sp2_emm <- emmeans(sp2_add, ~ heat * immune, type = "response")
+sp2_emm
+
+knitr::kable(
+  as.data.frame(pairs(sp2_emm, adjust = "tukey")),
+  digits  = 4,
+  caption = "SP2 — pairwise contrasts (Tukey-adjusted)"
+)
+```
+
+## 4.5 Interaction Plot
+
+```{r sp2-plot, fig.width=6, fig.height=4}
+sp2 %>%
+  mutate(predicted = predict(sp2_add, type = "response")) %>%
+  ggplot(aes(x = heat_label, colour = immune_label, group = immune_label)) +
+  geom_line(aes(y = predicted), linetype = "dashed", linewidth = 0.8) +
+  geom_point(aes(y = rate), size = 4) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.55)) +
+  scale_colour_manual(values = c("No Immune" = "#2196F3", "Immune" = "#F44336")) +
+  labs(
+    title    = "SP2 — Retrieval Rate by Priming Treatment",
+    subtitle = "Points = observed; dashed = additive model predictions",
+    x        = "Heat Priming", y = "Retrieval Rate", colour = "Immune Priming"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "top")
+```
+
+## 4.6 Bar Chart
+
+```{r sp2-bar, fig.width=6, fig.height=4}
+ggplot(sp2, aes(x = priming_treatment, y = rate, fill = priming_treatment)) +
+  geom_col(width = 0.6, colour = "white") +
+  geom_text(aes(label = paste0(retrieved, "/", deployed)),
+            vjust = -0.5, size = 3.5) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.55)) +
+  scale_fill_manual(values = c(
+    "Control"     = "#90CAF9",
+    "Heat"        = "#EF9A9A",
+    "Immune"      = "#A5D6A7",
+    "Combination" = "#CE93D8"
+  )) +
+  labs(title = "SP2 — Observed Retrieval Rates",
+       x = "Priming Treatment", y = "Retrieval Rate") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+---
+
+# 5. Side-by-Side Summary
+
+```{r summary-table}
+bind_rows(
+  sp1 %>% mutate(sample_point = "SP1",
+                 predicted = predict(sp1_add, type = "response")),
+  sp2 %>% mutate(sample_point = "SP2",
+                 predicted = predict(sp2_add, type = "response"))
+) %>%
+  mutate(pct_retrieved = paste0(round(rate * 100, 1), "%")) %>%
+  select(sample_point, priming_treatment, retrieved, deployed,
+         pct_retrieved, predicted) %>%
+  knitr::kable(digits = 3,
+               caption = "Observed and model-predicted retrieval rates — both sample points")
+```
+
+```{r summary-plot, fig.width=8, fig.height=4}
+bind_rows(
+  sp1 %>% mutate(sample_point = "SP1"),
+  sp2 %>% mutate(sample_point = "SP2")
+) %>%
+  ggplot(aes(x = priming_treatment, y = rate, fill = priming_treatment)) +
+  geom_col(width = 0.6, colour = "white") +
+  geom_text(aes(label = paste0(retrieved, "/", deployed)),
+            vjust = -0.5, size = 3) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.55)) +
+  scale_fill_manual(values = c(
+    "Control"     = "#90CAF9",
+    "Heat"        = "#EF9A9A",
+    "Immune"      = "#A5D6A7",
+    "Combination" = "#CE93D8"
+  )) +
+  facet_wrap(~ sample_point) +
+  labs(title = "Retrieval Rates by Treatment and Sample Point",
+       x = "Priming Treatment", y = "Retrieval Rate") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+---
+
+# 6. Notes on Replication
+
+> **Important:** Each treatment cell has **one aggregate observation** (no within-cell tank/replicate replication). Consequences:
+>
+> - The full factorial model is **saturated** (zero residual df) — the interaction cannot be separated from residual error.
+> - Results from the additive model should be interpreted cautiously.
+>
+> If replicate tanks exist per treatment, restructure to include a `tank` ID and use a mixed-effects model:
+>
+> ```r
+> library(lme4)
+> model_mixed <- glmer(
+>   cbind(retrieved, deployed - retrieved) ~ heat * immune + (1 | tank),
+>   data   = data_rep,
+>   family = binomial
+> )
+> ```
+
+---
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```

@@ -1,0 +1,243 @@
+---
+title: "Retrieval Rate Analysis: 2x2 Factorial Priming Experiment"
+author: ""
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Overview
+
+This script analyses retrieval rates from a **2×2 factorial priming experiment** with two binary factors:
+
+- **Heat priming** (No / Yes)
+- **Immune priming** (No / Yes)
+
+The response variable is the number of individuals retrieved out of those deployed (binomial outcome), modelled using a **binomial GLM** (logit link).
+
+---
+
+# 1. Load Packages
+
+```{r packages}
+library(tidyverse)
+library(emmeans)
+library(car)        # Anova() with Type III SS
+library(ggplot2)
+```
+
+---
+
+# 2. Enter Data
+
+```{r data}
+data <- data.frame(
+  priming_treatment = c("Control", "Heat", "Immune", "Combination"),
+  heat              = c(0, 1, 0, 1),   # 0 = No heat priming, 1 = Heat priming
+  immune            = c(0, 0, 1, 1),   # 0 = No immune priming, 1 = Immune priming
+  retrieved         = c(45, 42, 32, 39),
+  deployed          = c(120, 120, 120, 120)
+) %>%
+  mutate(
+    rate             = retrieved / deployed,
+    heat_label       = factor(ifelse(heat   == 1, "Heat",   "No Heat"),
+                              levels = c("No Heat", "Heat")),
+    immune_label     = factor(ifelse(immune == 1, "Immune", "No Immune"),
+                              levels = c("No Immune", "Immune")),
+    priming_treatment = factor(priming_treatment,
+                               levels = c("Control", "Heat", "Immune", "Combination"))
+  )
+
+# Preview
+knitr::kable(
+  data %>% select(priming_treatment, heat_label, immune_label, retrieved, deployed, rate),
+  digits  = 3,
+  caption = "Retrieval rates by priming treatment"
+)
+```
+
+---
+
+# 3. Binomial GLM
+
+## 3.1 Fit Full Factorial Model
+
+```{r model-full}
+model_full <- glm(
+  cbind(retrieved, deployed - retrieved) ~ heat * immune,
+  data   = data,
+  family = binomial(link = "logit")
+)
+
+summary(model_full)
+```
+
+> **Note:** With only one observation per cell (no within-cell replication), the saturated model has **zero residual degrees of freedom**. The interaction term is confounded with residual error — interpretation below accounts for this.
+
+## 3.2 Likelihood Ratio Tests (Type II)
+
+```{r anova-lrt}
+anova(model_full, test = "Chisq")
+```
+
+## 3.3 Main-Effects-Only Model (assumes no interaction)
+
+If the interaction is not meaningful or cannot be estimated, fit the additive model:
+
+```{r model-additive}
+model_add <- glm(
+  cbind(retrieved, deployed - retrieved) ~ heat + immune,
+  data   = data,
+  family = binomial(link = "logit")
+)
+
+summary(model_add)
+anova(model_add, test = "Chisq")
+```
+
+## 3.4 Model Comparison
+
+```{r model-comparison}
+anova(model_add, model_full, test = "Chisq")
+```
+
+---
+
+# 4. Estimated Marginal Means & Pairwise Contrasts
+
+```{r emmeans}
+# Estimated marginal means on the response (probability) scale
+emm <- emmeans(model_add, ~ heat * immune, type = "response")
+emm
+
+# All pairwise comparisons (Tukey-adjusted)
+pairs(emm, adjust = "tukey")
+```
+
+```{r contrasts-table}
+contrast_df <- as.data.frame(pairs(emm, adjust = "tukey"))
+knitr::kable(contrast_df, digits = 4, caption = "Pairwise contrasts (Tukey-adjusted)")
+```
+
+---
+
+# 5. Model Diagnostics
+
+```{r diagnostics, fig.width=8, fig.height=6}
+par(mfrow = c(2, 2))
+plot(model_add, which = 1:4)
+par(mfrow = c(1, 1))
+```
+
+---
+
+# 6. Visualisation
+
+## 6.1 Interaction Plot
+
+```{r interaction-plot, fig.width=6, fig.height=4}
+# Get predicted probabilities from the additive model
+pred_data <- data %>%
+  mutate(
+    predicted = predict(model_add, type = "response")
+  )
+
+ggplot(pred_data, aes(x = heat_label, y = rate,
+                      colour = immune_label, group = immune_label)) +
+  geom_line(aes(y = predicted), linetype = "dashed", linewidth = 0.8) +
+  geom_point(size = 4) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.5)) +
+  scale_colour_manual(values = c("No Immune" = "#2196F3", "Immune" = "#F44336")) +
+  labs(
+    title    = "Retrieval Rate by Priming Treatment",
+    subtitle = "Points = observed; dashed lines = additive model predictions",
+    x        = "Heat Priming",
+    y        = "Retrieval Rate",
+    colour   = "Immune Priming"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "top")
+```
+
+## 6.2 Bar Chart with Observed Rates
+
+```{r bar-chart, fig.width=6, fig.height=4}
+ggplot(data, aes(x = priming_treatment, y = rate, fill = priming_treatment)) +
+  geom_col(width = 0.6, colour = "white") +
+  geom_text(aes(label = paste0(retrieved, "/", deployed)),
+            vjust = -0.5, size = 3.5) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 0.5)) +
+  scale_fill_manual(values = c(
+    "Control"     = "#90CAF9",
+    "Heat"        = "#EF9A9A",
+    "Immune"      = "#A5D6A7",
+    "Combination" = "#CE93D8"
+  )) +
+  labs(
+    title = "Observed Retrieval Rates by Treatment",
+    x     = "Priming Treatment",
+    y     = "Retrieval Rate"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+---
+
+# 7. Results Summary
+
+```{r results-table}
+results <- data %>%
+  mutate(
+    predicted_rate = predict(model_add, type = "response"),
+    pct_retrieved  = paste0(round(rate * 100, 1), "%")
+  ) %>%
+  select(priming_treatment, heat_label, immune_label,
+         retrieved, deployed, pct_retrieved, predicted_rate)
+
+knitr::kable(results, digits = 3,
+             caption = "Observed and model-predicted retrieval rates")
+```
+
+---
+
+# 8. Notes on Replication
+
+> **Important:** This analysis has **one observation per treatment cell**. Without within-cell replication (e.g. multiple tanks or batches per treatment), it is not possible to:
+>
+> - Independently estimate the interaction term and residual error
+> - Reliably assess overdispersion
+> - Compute within-group variance
+>
+> If multiple tanks/replicates exist per treatment, restructure the data to include a replicate ID and consider a **mixed-effects binomial model** (`lme4::glmer`) with tank as a random effect:
+>
+> ```r
+> library(lme4)
+> model_mixed <- glmer(
+>   cbind(retrieved, deployed - retrieved) ~ heat * immune + (1 | tank),
+>   data   = data_rep,
+>   family = binomial
+> )
+> ```
+
+---
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```

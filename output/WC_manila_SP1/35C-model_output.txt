@@ -1,4 +1,4 @@
-Run timestamp: 2026-09-20 18:25:54 
+Run timestamp: 2026-09-29 21:35:49 
 ================================================================
 
 
@@ -9,7 +9,7 @@ Run timestamp: 2026-09-20 18:25:54
 --- Summary ---
 Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
  Family: binomial  ( logit )
-Formula: mortality ~ Immune_Priming * Heat_Priming * hours + (1 | Field_Replicate) +      (1 | Assay_Replicate)
+Formula: mortality ~ Immune_Priming * Heat_Priming * hours + (1 | Assay_Replicate) +      (1 | Field_Replicate)
    Data: surv_long
 Control: glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e+05))
 
@@ -94,6 +94,391 @@ hours = 19.71875:
 
 P value adjustment: tukey method for comparing a family of 4 estimates 
 Tests are performed on the log odds ratio scale 
+
+================================================================
+AS.FACTOR MODEL: hours treated as factor (for LT50 estimation)
+Fixed: Immune_Priming * Heat_Priming * hours_f
+Random effects: Field + Assay
+================================================================
+
+--- Summary ---
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: mortality ~ Immune_Priming * Heat_Priming * hours_f + (1 | Field_Replicate) +      (1 | Assay_Replicate)
+   Data: surv_long
+Control: glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e+05))
+
+      AIC       BIC    logLik -2*log(L)  df.resid 
+    889.9    1261.1    -378.9     757.9      1982 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-5.6469 -0.2061  0.0000  0.0000  6.0706 
+
+Random effects:
+ Groups          Name        Variance  Std.Dev. 
+ Assay_Replicate (Intercept) 3.015e-15 5.491e-08
+ Field_Replicate (Intercept) 2.182e-01 4.672e-01
+Number of obs: 2048, groups:  Assay_Replicate, 8; Field_Replicate, 4
+
+Fixed effects:
+                                                Estimate Std. Error z value Pr(>|z|)
+(Intercept)                                   -2.157e+01  8.175e+03  -0.003    0.998
+Immune_PrimingYes                             -7.267e-02  1.178e+04   0.000    1.000
+Heat_PrimingYes                               -6.519e-02  1.175e+04   0.000    1.000
+hours_f6                                       1.190e-03  1.156e+04   0.000    1.000
+hours_f8                                       2.538e-03  1.155e+04   0.000    1.000
+hours_f10                                      3.858e-03  1.155e+04   0.000    1.000
+hours_f12                                     -2.478e-04  1.156e+04   0.000    1.000
+hours_f14                                      1.804e+01  8.175e+03   0.002    0.998
+hours_f16                                      1.804e+01  8.175e+03   0.002    0.998
+hours_f18                                      1.804e+01  8.175e+03   0.002    0.998
+hours_f20                                      1.922e+01  8.175e+03   0.002    0.998
+hours_f22                                      2.074e+01  8.175e+03   0.003    0.998
+hours_f24                                      2.130e+01  8.175e+03   0.003    0.998
+hours_f26                                      2.157e+01  8.175e+03   0.003    0.998
+hours_f28                                      2.240e+01  8.175e+03   0.003    0.998
+hours_f29.5                                    2.290e+01  8.175e+03   0.003    0.998
+hours_f36                                      2.511e+01  8.175e+03   0.003    0.998
+hours_f42                                      4.314e+01  1.152e+04   0.004    0.997
+Immune_PrimingYes:Heat_PrimingYes              6.414e-02  1.679e+04   0.000    1.000
+Immune_PrimingYes:hours_f6                     2.855e-03  1.664e+04   0.000    1.000
+Immune_PrimingYes:hours_f8                     3.563e-03  1.664e+04   0.000    1.000
+Immune_PrimingYes:hours_f10                    2.699e-03  1.663e+04   0.000    1.000
+Immune_PrimingYes:hours_f12                    2.964e-03  1.665e+04   0.000    1.000
+Immune_PrimingYes:hours_f14                   -1.805e+01  1.453e+04  -0.001    0.999
+Immune_PrimingYes:hours_f16                   -1.805e+01  1.453e+04  -0.001    0.999
+Immune_PrimingYes:hours_f18                   -1.805e+01  1.453e+04  -0.001    0.999
+Immune_PrimingYes:hours_f20                   -1.923e+01  1.453e+04  -0.001    0.999
+Immune_PrimingYes:hours_f22                   -2.074e+01  1.451e+04  -0.001    0.999
+Immune_PrimingYes:hours_f24                   -3.186e+00  1.178e+04   0.000    1.000
+Immune_PrimingYes:hours_f26                   -1.681e+00  1.178e+04   0.000    1.000
+Immune_PrimingYes:hours_f28                   -1.907e+00  1.178e+04   0.000    1.000
+Immune_PrimingYes:hours_f29.5                 -1.801e+00  1.178e+04   0.000    1.000
+Immune_PrimingYes:hours_f36                   -2.136e+00  1.178e+04   0.000    1.000
+Immune_PrimingYes:hours_f42                    1.357e-01  1.658e+04   0.000    1.000
+Heat_PrimingYes:hours_f6                       2.793e-03  1.661e+04   0.000    1.000
+Heat_PrimingYes:hours_f8                       2.874e-03  1.661e+04   0.000    1.000
+Heat_PrimingYes:hours_f10                      1.714e-03  1.660e+04   0.000    1.000
+Heat_PrimingYes:hours_f12                      7.275e-04  1.662e+04   0.000    1.000
+Heat_PrimingYes:hours_f14                      6.518e-02  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f16                      6.521e-02  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f18                      6.522e-02  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f20                     -3.796e-01  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f22                     -4.371e-01  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f24                     -9.994e-01  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f26                     -1.084e+00  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f28                     -1.164e+00  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f29.5                   -1.272e+00  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f36                      6.517e-02  1.175e+04   0.000    1.000
+Heat_PrimingYes:hours_f42                      1.311e-01  1.657e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f6     4.027e-03  2.372e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f8     2.223e-03  2.371e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f10    1.149e-03  2.371e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f12    1.698e-03  2.373e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f14   -6.029e-02  2.066e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f16   -5.985e-02  2.065e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f18   -6.057e-02  2.066e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f20    3.852e-01  2.065e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f22    4.409e-01  2.063e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f24    1.000e+00  1.679e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f26    4.914e-01  1.679e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f28    2.952e-01  1.679e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f29.5  4.809e-01  1.679e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f36   -7.201e-01  1.679e+04   0.000    1.000
+Immune_PrimingYes:Heat_PrimingYes:hours_f42   -1.283e-01  2.364e+04   0.000    1.000
+optimizer (bobyqa) convergence code: 0 (OK)
+boundary (singular) fit: see help('isSingular')
+
+
+--- Type II Anova ---
+Analysis of Deviance Table (Type II Wald chisquare tests)
+
+Response: mortality
+                                       Chisq Df Pr(>Chisq)    
+Immune_Priming                       68.2321 10  9.718e-11 ***
+Heat_Priming                         24.9358 15    0.05081 .  
+hours_f                             198.9728 32  < 2.2e-16 ***
+Immune_Priming:Heat_Priming           1.6090  5    0.90016    
+Immune_Priming:hours_f                3.7313 19    0.99994    
+Heat_Priming:hours_f                  3.8293 19    0.99992    
+Immune_Priming:Heat_Priming:hours_f   0.6923 15    1.00000    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+--- EMmeans (predicted probability per time × treatment) ---
+hours_f = 4:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0000000 3.50e-06 Inf 0.0000000  1.000000
+ Yes            No           0.0000000 3.38e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0000000 3.39e-06 Inf 0.0000000  1.000000
+ Yes            Yes          0.0000000 3.38e-06 Inf 0.0000000  1.000000
+
+hours_f = 6:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0000000 3.51e-06 Inf 0.0000000  1.000000
+ Yes            No           0.0000000 3.38e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0000000 3.40e-06 Inf 0.0000000  1.000000
+ Yes            Yes          0.0000000 3.39e-06 Inf 0.0000000  1.000000
+
+hours_f = 8:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0000000 3.51e-06 Inf 0.0000000  1.000000
+ Yes            No           0.0000000 3.39e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0000000 3.40e-06 Inf 0.0000000  1.000000
+ Yes            Yes          0.0000000 3.40e-06 Inf 0.0000000  1.000000
+
+hours_f = 10:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0000000 3.51e-06 Inf 0.0000000  1.000000
+ Yes            No           0.0000000 3.39e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0000000 3.40e-06 Inf 0.0000000  1.000000
+ Yes            Yes          0.0000000 3.39e-06 Inf 0.0000000  1.000000
+
+hours_f = 12:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0000000 3.50e-06 Inf 0.0000000  1.000000
+ Yes            No           0.0000000 3.38e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0000000 3.39e-06 Inf 0.0000000  1.000000
+ Yes            Yes          0.0000000 3.39e-06 Inf 0.0000000  1.000000
+
+hours_f = 14:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0285380 2.91e-02 Inf 0.0037383  0.186979
+ Yes            No           0.0000000 3.36e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0285375 2.91e-02 Inf 0.0037382  0.186979
+ Yes            Yes          0.0000000 3.37e-06 Inf 0.0000000  1.000000
+
+hours_f = 16:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0285375 2.91e-02 Inf 0.0037382  0.186979
+ Yes            No           0.0000000 3.37e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0285379 2.91e-02 Inf 0.0037383  0.186979
+ Yes            Yes          0.0000000 3.37e-06 Inf 0.0000000  1.000000
+
+hours_f = 18:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0285372 2.91e-02 Inf 0.0037381  0.186979
+ Yes            No           0.0000000 3.36e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0285381 2.91e-02 Inf 0.0037383  0.186979
+ Yes            Yes          0.0000000 3.37e-06 Inf 0.0000000  1.000000
+
+hours_f = 20:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.0869421 5.21e-02 Inf 0.0256509  0.256180
+ Yes            No           0.0000000 3.37e-06 Inf 0.0000000  1.000000
+ No             Yes          0.0575231 4.19e-02 Inf 0.0132351  0.217365
+ Yes            Yes          0.0000000 3.38e-06 Inf 0.0000000  1.000000
+
+hours_f = 22:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.3034253 9.58e-02 Inf 0.1519017  0.514417
+ Yes            No           0.0000000 3.38e-06 Inf 0.0000000  1.000000
+ No             Yes          0.2086034 8.14e-02 Inf 0.0911132  0.409360
+ Yes            Yes          0.0000000 3.38e-06 Inf 0.0000000  1.000000
+
+hours_f = 24:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.4332041 1.06e-01 Inf 0.2466002  0.640894
+ Yes            No           0.0285373 2.91e-02 Inf 0.0037381  0.186979
+ No             Yes          0.2086031 8.14e-02 Inf 0.0911130  0.409360
+ Yes            Yes          0.0285379 2.91e-02 Inf 0.0037383  0.186979
+
+hours_f = 26:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.4989201 1.08e-01 Inf 0.2998002  0.698383
+ Yes            No           0.1470142 6.85e-02 Inf 0.0558190  0.334428
+ No             Yes          0.2399112 8.69e-02 Inf 0.1103764  0.445361
+ Yes            Yes          0.0869421 5.21e-02 Inf 0.0256509  0.256179
+
+hours_f = 28:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.6955326 9.63e-02 Inf 0.4835983  0.847853
+ Yes            No           0.2399117 8.69e-02 Inf 0.1103767  0.445362
+ No             Yes          0.4004978 1.05e-01 Inf 0.2214721  0.610716
+ Yes            Yes          0.1167782 6.08e-02 Inf 0.0399923  0.295599
+
+hours_f = 29.5:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.7913417 8.18e-02 Inf 0.5894528  0.909238
+ Yes            No           0.3679427 1.02e-01 Inf 0.1973157  0.579581
+ No             Yes          0.4989202 1.08e-01 Inf 0.2998003  0.698383
+ Yes            Yes          0.2086034 8.14e-02 Inf 0.0911132  0.409360
+
+hours_f = 36:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           0.9718478 2.89e-02 Inf 0.8137534  0.996347
+ Yes            No           0.7913422 8.18e-02 Inf 0.5894533  0.909238
+ No             Yes          0.9718473 2.89e-02 Inf 0.8137531  0.996347
+ Yes            Yes          0.6630745 9.99e-02 Inf 0.4503966  0.825364
+
+hours_f = 42:
+ Immune_Priming Heat_Priming      prob       SE  df asymp.LCL asymp.UCL
+ No             No           1.0000000 3.49e-06 Inf 0.0000000  1.000000
+ Yes            No           1.0000000 3.38e-06 Inf 0.0000000  1.000000
+ No             Yes          1.0000000 3.38e-06 Inf 0.0000000  1.000000
+ Yes            Yes          1.0000000 3.38e-06 Inf 0.0000000  1.000000
+
+Confidence level used: 0.95 
+Intervals are back-transformed from the logit scale 
+
+--- Pairwise contrasts at each timepoint ---
+hours_f = 4:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     1.00e+00 1.27e+04 Inf    1   0.000  1.0000
+ No No / No Yes     1.00e+00 1.25e+04 Inf    1   0.000  1.0000
+ No No / Yes Yes    1.00e+00 1.27e+04 Inf    1   0.000  1.0000
+ Yes No / No Yes    1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+ Yes No / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   1.00e+00 1.21e+04 Inf    1   0.000  1.0000
+
+hours_f = 6:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     1.00e+00 1.26e+04 Inf    1   0.000  1.0000
+ No No / No Yes     1.00e+00 1.25e+04 Inf    1   0.000  1.0000
+ No No / Yes Yes    1.00e+00 1.25e+04 Inf    1   0.000  1.0000
+ Yes No / No Yes    1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+ Yes No / Yes Yes   1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+
+hours_f = 8:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     1.00e+00 1.26e+04 Inf    1   0.000  1.0000
+ No No / No Yes     1.00e+00 1.25e+04 Inf    1   0.000  1.0000
+ No No / Yes Yes    1.00e+00 1.25e+04 Inf    1   0.000  1.0000
+ Yes No / No Yes    1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+ Yes No / Yes Yes   1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+
+hours_f = 10:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     1.00e+00 1.26e+04 Inf    1   0.000  1.0000
+ No No / No Yes     1.00e+00 1.25e+04 Inf    1   0.000  1.0000
+ No No / Yes Yes    1.00e+00 1.26e+04 Inf    1   0.000  1.0000
+ Yes No / No Yes    1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+ Yes No / Yes Yes   1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+
+hours_f = 12:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     1.00e+00 1.26e+04 Inf    1   0.000  1.0000
+ No No / No Yes     1.00e+00 1.25e+04 Inf    1   0.000  1.0000
+ No No / Yes Yes    1.00e+00 1.26e+04 Inf    1   0.000  1.0000
+ Yes No / No Yes    1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+ Yes No / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+
+hours_f = 14:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     7.44e+07 6.33e+11 Inf    1   0.002  1.0000
+ No No / No Yes     1.00e+00 1.00e+00 Inf    1   0.000  1.0000
+ No No / Yes Yes    7.41e+07 6.30e+11 Inf    1   0.002  1.0000
+ Yes No / No Yes    0.00e+00 0.00e+00 Inf    1  -0.002  1.0000
+ Yes No / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   7.41e+07 6.30e+11 Inf    1   0.002  1.0000
+
+hours_f = 16:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     7.42e+07 6.31e+11 Inf    1   0.002  1.0000
+ No No / No Yes     1.00e+00 1.00e+00 Inf    1   0.000  1.0000
+ No No / Yes Yes    7.39e+07 6.27e+11 Inf    1   0.002  1.0000
+ Yes No / No Yes    0.00e+00 0.00e+00 Inf    1  -0.002  1.0000
+ Yes No / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   7.39e+07 6.27e+11 Inf    1   0.002  1.0000
+
+hours_f = 18:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     7.44e+07 6.34e+11 Inf    1   0.002  1.0000
+ No No / No Yes     1.00e+00 1.00e+00 Inf    1   0.000  1.0000
+ No No / Yes Yes    7.41e+07 6.30e+11 Inf    1   0.002  1.0000
+ Yes No / No Yes    0.00e+00 0.00e+00 Inf    1  -0.002  1.0000
+ Yes No / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   7.41e+07 6.30e+11 Inf    1   0.002  1.0000
+
+hours_f = 20:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     2.40e+08 2.05e+12 Inf    1   0.002  1.0000
+ No No / No Yes     2.00e+00 1.00e+00 Inf    1   0.464  0.9668
+ No No / Yes Yes    2.39e+08 2.03e+12 Inf    1   0.002  1.0000
+ Yes No / No Yes    0.00e+00 0.00e+00 Inf    1  -0.002  1.0000
+ Yes No / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   1.53e+08 1.30e+12 Inf    1   0.002  1.0000
+
+hours_f = 22:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     1.09e+09 9.29e+12 Inf    1   0.002  1.0000
+ No No / No Yes     2.00e+00 1.00e+00 Inf    1   0.863  0.8241
+ No No / Yes Yes    1.09e+09 9.25e+12 Inf    1   0.002  1.0000
+ Yes No / No Yes    0.00e+00 0.00e+00 Inf    1  -0.002  1.0000
+ Yes No / Yes Yes   1.00e+00 1.20e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   6.61e+08 5.60e+12 Inf    1   0.002  1.0000
+
+hours_f = 24:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     2.60e+01 2.80e+01 Inf    1   3.000  0.0144
+ No No / No Yes     3.00e+00 2.00e+00 Inf    1   1.879  0.2372
+ No No / Yes Yes    2.60e+01 2.80e+01 Inf    1   3.000  0.0144
+ Yes No / No Yes    0.00e+00 0.00e+00 Inf    1  -1.974  0.1977
+ Yes No / Yes Yes   1.00e+00 1.00e+00 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   9.00e+00 1.00e+01 Inf    1   1.974  0.1977
+
+hours_f = 26:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     6.00e+00 4.00e+00 Inf    1   2.867  0.0216
+ No No / No Yes     3.00e+00 2.00e+00 Inf    1   2.087  0.1574
+ No No / Yes Yes    1.00e+01 7.00e+00 Inf    1   3.298  0.0054
+ Yes No / No Yes    1.00e+00 0.00e+00 Inf    1  -0.939  0.7836
+ Yes No / Yes Yes   2.00e+00 1.00e+00 Inf    1   0.755  0.8746
+ No Yes / Yes Yes   3.00e+00 2.00e+00 Inf    1   1.620  0.3671
+
+hours_f = 28:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     7.00e+00 4.00e+00 Inf    1   3.470  0.0029
+ No No / No Yes     3.00e+00 2.00e+00 Inf    1   2.292  0.0999
+ No No / Yes Yes    1.70e+01 1.20e+01 Inf    1   4.268  0.0001
+ Yes No / No Yes    0.00e+00 0.00e+00 Inf    1  -1.353  0.5292
+ Yes No / Yes Yes   2.00e+00 2.00e+00 Inf    1   1.277  0.5774
+ No Yes / Yes Yes   5.00e+00 3.00e+00 Inf    1   2.478  0.0634
+
+hours_f = 29.5:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     7.00e+00 4.00e+00 Inf    1   3.260  0.0061
+ No No / No Yes     4.00e+00 2.00e+00 Inf    1   2.357  0.0856
+ No No / Yes Yes    1.40e+01 9.00e+00 Inf    1   4.321 <0.0001
+ Yes No / No Yes    1.00e+00 0.00e+00 Inf    1  -1.034  0.7297
+ Yes No / Yes Yes   2.00e+00 1.00e+00 Inf    1   1.385  0.5086
+ No Yes / Yes Yes   4.00e+00 2.00e+00 Inf    1   2.351  0.0867
+
+hours_f = 36:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     9.00e+00 1.00e+01 Inf    1   1.978  0.1964
+ No No / No Yes     1.00e+00 1.00e+00 Inf    1   0.000  1.0000
+ No No / Yes Yes    1.80e+01 1.90e+01 Inf    1   2.613  0.0445
+ Yes No / No Yes    0.00e+00 0.00e+00 Inf    1  -1.978  0.1964
+ Yes No / Yes Yes   2.00e+00 1.00e+00 Inf    1   1.132  0.6697
+ No Yes / Yes Yes   1.80e+01 1.90e+01 Inf    1   2.613  0.0445
+
+hours_f = 42:
+ contrast         odds.ratio       SE  df null z.ratio p.value
+ No No / Yes No     1.00e+00 1.10e+04 Inf    1   0.000  1.0000
+ No No / No Yes     1.00e+00 1.09e+04 Inf    1   0.000  1.0000
+ No No / Yes Yes    1.00e+00 1.09e+04 Inf    1   0.000  1.0000
+ Yes No / No Yes    1.00e+00 1.18e+04 Inf    1   0.000  1.0000
+ Yes No / Yes Yes   1.00e+00 1.18e+04 Inf    1   0.000  1.0000
+ No Yes / Yes Yes   1.00e+00 1.19e+04 Inf    1   0.000  1.0000
+
+P value adjustment: tukey method for comparing a family of 4 estimates 
+Tests are performed on the log odds ratio scale 
+
+--- Nearest timepoint to LT50 (prob ≈ 0.50) per treatment ---
+# A tibble: 4 × 6
+# Groups:   Immune_Priming, Heat_Priming [4]
+  Immune_Priming Heat_Priming hours_f  prob asymp.LCL asymp.UCL
+  <fct>          <fct>        <fct>   <dbl>     <dbl>     <dbl>
+1 No             No           26      0.499     0.300     0.698
+2 No             Yes          29.5    0.499     0.300     0.698
+3 Yes            No           29.5    0.368     0.197     0.580
+4 Yes            Yes          36      0.663     0.450     0.825
 
 ================================================================
 4-TREATMENT MODEL: Treatment * hours

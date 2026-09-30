@@ -61,7 +61,7 @@ data_dir <- "data/resassay_SP1/AP_cockle_final"
 
 # ── OUTPUT ────────────────────────────────────────────────────────────────────
 # Directory for saved figures
-fig_dir  <- "output/AP_cockles_SP1_pink/figures/ah"
+fig_dir  <- "output/AP_cockles_SP1_pink/figures/ah2"
 
 # Create output directories if they don't already exist
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
@@ -690,6 +690,22 @@ plot5 <- ggplot() +
 plot5
 
 ggsave(plot5, filename = file.path(fig_dir, "auc-temperatures.png"), width = 7, height = 5)
+```
+
+```{r}
+plot6 <- ggplot() +
+  # Model-predicted AUC trajectory per treatment across temperatures
+  geom_line(data = pred_grid,
+            aes(x = temperature, y = AUC_pred,
+                color = Treatment, group = Treatment),
+            linewidth = 1.5) +
+  scale_colour_manual(values = trt_colours, name = "Priming Treatment") +
+  labs(title = "A", y = "AUC", x = "Temperature") +
+  theme_classic(base_size = 16)
+plot6
+
+ggsave(plot6, filename = file.path(fig_dir, "auc-temperatures-line.png"), width = 7, height = 5)
+
 ```
 
 ```{r auc-summary}

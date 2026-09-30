@@ -1,0 +1,5 @@
+"priming_treatment","heat_label","immune_label","retrieved","deployed","rate"
+"Control","No Heat","No Immune",148,200,0.74
+"Heat","Heat","No Immune",149,200,0.745
+"Immune","No Heat","Immune",145,200,0.725
+"Combination","Heat","Immune",164,200,0.82

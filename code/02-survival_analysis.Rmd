@@ -38,7 +38,11 @@ library(lmerTest)
 # Point this at your transformed mortality CSV (output of transform_mortality.R).
 # If running multiple assay temperatures, either combine files before loading
 # or re-run this script once per file.
-DATA_FILE <- "data/survivalassay_SP2/WC_manila-40C_mortality.csv"
+DATA_FILE <- "data/survivalassay_SP1/AP_cockles-26C_mortality.csv"
+
+# Directory where all outputs (txt, png, etc.) will be written.
+# Trailing slash is optional; file.path() handles it either way.
+OUT_DIR <- "output/AP_cockles_SP1"
 # ─────────────────────────────────────────────────────────────────────────────
 
 surv <- read_csv(DATA_FILE)
@@ -83,6 +87,23 @@ surv_long %>%
   print(n = Inf)
 ```
 
+```{r}
+# At the bottom of your wrangle chunk, add both at once:
+surv_long <- surv_long %>%
+  mutate(
+    hours_f = as.factor(hours),
+    Treatment = factor(case_when(
+      Immune_Priming == "Yes" & Heat_Priming == "Yes" ~ "Combined",
+      Immune_Priming == "Yes" & Heat_Priming == "No"  ~ "Immune_Only",
+      Immune_Priming == "No"  & Heat_Priming == "Yes" ~ "Heat_Only",
+      Immune_Priming == "No"  & Heat_Priming == "No"  ~ "Control"
+    ), levels = c("Control", "Immune_Only", "Heat_Only", "Combined"))
+  )
+
+# surv_long4 is then just a view, not a separate mutation step
+surv_long4 <- surv_long
+```
+
 # Analysis: full time series
 
 Mixed-effects binomial logistic regression across all timepoints.
@@ -125,7 +146,7 @@ VarCorr(model_ts_full)
 ```
 
 ```{r}
-# initial model results on rand. effects for manilas-40C (SP2): 
+# initial model results on rand. effects for manilas-26C (SP1): 
 # 
 ### no silo vs. OG: 
 # npar AIC BIC logLik -2*log(L) Chisq Df Pr(>Chisq) 
@@ -174,28 +195,49 @@ pairs(emm_ts)
 dont run before plotting or will have to re run previous chunks to get plot to go
 
 ```{r}
-# surv_long$hours_f <- as.factor(surv_long$hours)
+surv_long$hours_f <- as.factor(surv_long$hours)
+
+model_f <- glmer(
+  mortality ~ Immune_Priming * Heat_Priming * hours_f +
+    (1 | Field_Replicate) +
+    (1 | Assay_Replicate),
+  family  = binomial(link = "logit"),
+  data    = surv_long,
+  control = glmerControl(optimizer = "bobyqa",
+                         optCtrl   = list(maxfun = 2e5))
+)
+
+# Predicted probability at each time × treatment
+emm_f <- emmeans(model_f,
+                 ~ Immune_Priming * Heat_Priming | hours_f,
+                 type = "response")
+pairs(emm_f)
+
+# Find which time point is closest to p = 0.50 per group
+as.data.frame(emm_f) %>%
+  group_by(Immune_Priming, Heat_Priming) %>%
+  slice_min(abs(prob - 0.50), n = 1) %>%   # 'prob' is the response-scale column
+  dplyr::select(Immune_Priming, Heat_Priming, hours_f, prob, asymp.LCL, asymp.UCL)
+```
+
+LTime50 by treatment - statistical testing [in progress - 9/29]
+
+```{r}
+# library(coxme)
 # 
-# model_f <- glmer(
-#   mortality ~ Immune_Priming * Heat_Priming * hours_f +
+# cox_model <- coxme(
+#   Surv(hours, mortality) ~ Immune_Priming * Heat_Priming +
 #     (1 | Field_Replicate) +
 #     (1 | Assay_Replicate),
-#   family  = binomial(link = "logit"),
-#   data    = surv_long,
-#   control = glmerControl(optimizer = "bobyqa",
-#                          optCtrl   = list(maxfun = 2e5))
+#   data = surv_long
 # )
 # 
-# # Predicted probability at each time × treatment
-# emm_f <- emmeans(model_f,
-#                  ~ Immune_Priming * Heat_Priming | hours_f,
-#                  type = "response")
+# summary(cox_model)
 # 
-# # Find which time point is closest to p = 0.50 per group
-# as.data.frame(emm_f) %>%
-#   group_by(Immune_Priming, Heat_Priming) %>%
-#   slice_min(abs(prob - 0.50), n = 1) %>%   # 'prob' is the response-scale column
-#   select(Immune_Priming, Heat_Priming, hours_f, prob, asymp.LCL, asymp.UCL)
+# library(survminer)
+# pairwise_survdiff(Surv(hours, mortality) ~ interaction(Immune_Priming, Heat_Priming),
+#                   data = surv_long,
+#                   p.adjust.method = "BH")
 ```
 
 ### Testing as 4 independent treatments vs a 2x2 factorial.
@@ -249,7 +291,7 @@ pairs(emm_ts4)
 ## Write to .txt file
 
 ```{r}
-output_file <- "output/AP_cockles_SP2/26C-model_output.txt"
+output_file <- file.path(OUT_DIR, "26C-model_output.txt")
 
 tryCatch({
   sink(output_file, append = FALSE)
@@ -298,6 +340,31 @@ tryCatch({
   cat("\n--- Pairwise contrasts ---\n")
   print(pairs(emm_ts))
   
+  # ── AS.FACTOR MODEL (hours_f) — LT50 estimation ───────────────────────────
+  cat("\n================================================================\n")
+  cat("AS.FACTOR MODEL: hours treated as factor (for LT50 estimation)\n")
+  cat("Fixed: Immune_Priming * Heat_Priming * hours_f\n")
+  cat("Random effects: Field + Assay\n")
+  cat("================================================================\n\n")
+
+  cat("--- Summary ---\n")
+  print(summary(model_f))
+  cat("\n--- Type II Anova ---\n")
+  print(Anova(model_f, type = "II"))
+
+  cat("\n--- EMmeans (predicted probability per time × treatment) ---\n")
+  print(emm_f)
+  cat("\n--- Pairwise contrasts at each timepoint ---\n")
+  print(pairs(emm_f))
+
+  cat("\n--- Nearest timepoint to LT50 (prob ≈ 0.50) per treatment ---\n")
+  print(
+    as.data.frame(emm_f) %>%
+      group_by(Immune_Priming, Heat_Priming) %>%
+      slice_min(abs(prob - 0.50), n = 1) %>%
+      dplyr::select(Immune_Priming, Heat_Priming, hours_f, prob, asymp.LCL, asymp.UCL)
+  )
+
   # ── 4-TREATMENT MODELS ────────────────────────────────────────────────────
   cat("\n================================================================\n")
   cat("4-TREATMENT MODEL: Treatment * hours\n")
@@ -339,16 +406,28 @@ cat("Output written to:", output_file, "\n")
 surv_long$predicted_mortality <- predict(model_ts, type = "response")
 
 plot_ts <- ggplot(surv_long,
-                  aes(x     = hours,
-                      y     = predicted_mortality,
-                      color = interaction(Immune_Priming, Heat_Priming),
-                      fill  = interaction(Immune_Priming, Heat_Priming),
-                      group = interaction(Immune_Priming, Heat_Priming))) +
+                  aes(x        = hours,
+                      y        = predicted_mortality,
+                      color    = interaction(Immune_Priming, Heat_Priming),
+                      fill     = interaction(Immune_Priming, Heat_Priming),
+                      linetype = interaction(Immune_Priming, Heat_Priming),
+                      group    = interaction(Immune_Priming, Heat_Priming))) +
   geom_point(aes(y = mortality), alpha = 0.2,
              position = position_jitter(height = 0.03)) +
   geom_smooth(method = "glm",
               method.args = list(family = "binomial"),
               se = TRUE) +
+  scale_linetype_manual(
+    values = c("No.No"   = "solid",
+               "Yes.No"  = "dashed",
+               "No.Yes"  = "dotted",
+               "Yes.Yes" = "dotdash"),
+    labels = c("No.No"   = "Control",
+               "Yes.No"  = "Immune Priming with Poly(I:C)",
+               "No.Yes"  = "Heat Priming at 33ºC",
+               "Yes.Yes" = "Combined Immune + Heat Priming"),
+    name = "Priming Treatment"
+  ) +
   scale_colour_manual(
     values = c("No.No"   = "blue",
                "Yes.No"  = "green",
@@ -376,10 +455,17 @@ plot_ts <- ggplot(surv_long,
     x     = "Hours",
     y     = "Probability of Mortality"
   ) +
-  theme_classic(base_size = 13); plot_ts
+  theme_classic(base_size = 13) +
+  theme(
+    legend.position    = "bottom",
+    legend.title.align = 0.5
+  ) +
+  guides(colour   = guide_legend(nrow = 2),
+         fill     = guide_legend(nrow = 2),
+         linetype = guide_legend(nrow = 2)); plot_ts
 
 ggsave(plot_ts,
-       filename = "output/AP_cockles_SP2/BC26C-survival_timeseries.png",
+       filename = file.path(OUT_DIR, "APC26C-survival_timeseries.png"),
        width = 8, height = 5)
 ```
 
@@ -396,44 +482,44 @@ plot3 <-ggplot(surv_long,
   
   geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
   scale_colour_manual(
-    values = c("WC-CC1-40"   = "blue",
-               "WC-CC2-40"  = "darkblue",
-               "WC-CP1-40"  = "forestgreen",
-               "WC-CP2-40" = "darkgreen",
-               "WC-EE1-40"   = "red",
-               "WC-EE2-40"  = "darkred",
-               "WC-EP1-40"  = "orange",
-               "WC-EP2-40" = "goldenrod"),
+    values = c("APC-CC1-26"   = "blue",
+               "APC-CC2-26"  = "darkblue",
+               "APC-CP1-26"  = "forestgreen",
+               "APC-CP2-26" = "darkgreen",
+               "APC-EE1-26"   = "red",
+               "APC-EE2-26"  = "darkred",
+               "APC-EP1-26"  = "orange",
+               "APC-EP2-26" = "goldenrod"),
 
-    labels = c("WC-CC1-40"   = "Control 1",
-               "WC-CC2-40"  = "Control 2",
-               "WC-CP1-40"  = "Immune 1",
-               "WC-CP2-40" = "Immune 2",
-               "WC-EE1-40"   = "Heat 1",
-               "WC-EE2-40"  = "Heat 2",
-               "WC-EP1-40"  = "Combined 1",
-               "WC-EP2-40" = "Combined 2"),
+    labels = c("APC-CC1-26"   = "Control 1",
+               "APC-CC2-26"  = "Control 2",
+               "APC-CP1-26"  = "Immune 1",
+               "APC-CP2-26" = "Immune 2",
+               "APC-EE1-26"   = "Heat 1",
+               "APC-EE2-26"  = "Heat 2",
+               "APC-EP1-26"  = "Combined 1",
+               "APC-EP2-26" = "Combined 2"),
     name = "Priming Treatment"
   ) +
   
   scale_fill_manual(
-    values = c("WC-CC1-40"   = "blue",
-               "WC-CC2-40"  = "darkblue",
-               "WC-CP1-40"  = "forestgreen",
-               "WC-CP2-40" = "darkgreen",
-               "WC-EE1-40"   = "red",
-               "WC-EE2-40"  = "darkred",
-               "WC-EP1-40"  = "orange",
-               "WC-EP2-40" = "goldenrod"),
+    values = c("APC-CC1-26"   = "blue",
+               "APC-CC2-26"  = "darkblue",
+               "APC-CP1-26"  = "forestgreen",
+               "APC-CP2-26" = "darkgreen",
+               "APC-EE1-26"   = "red",
+               "APC-EE2-26"  = "darkred",
+               "APC-EP1-26"  = "orange",
+               "APC-EP2-26" = "goldenrod"),
 
-    labels = c("WC-CC1-40"   = "Control 1",
-               "WC-CC2-40"  = "Control 2",
-               "WC-CP1-40"  = "Immune 1",
-               "WC-CP2-40" = "Immune 2",
-               "WC-EE1-40"   = "Heat 1",
-               "WC-EE2-40"  = "Heat 2",
-               "WC-EP1-40"  = "Combined 1",
-               "WC-EP2-40" = "Combined 2"),
+    labels = c("APC-CC1-26"   = "Control 1",
+               "APC-CC2-26"  = "Control 2",
+               "APC-CP1-26"  = "Immune 1",
+               "APC-CP2-26" = "Immune 2",
+               "APC-EE1-26"   = "Heat 1",
+               "APC-EE2-26"  = "Heat 2",
+               "APC-EP1-26"  = "Combined 1",
+               "APC-EP2-26" = "Combined 2"),
     name = "Priming Treatment"
   ) +
   
