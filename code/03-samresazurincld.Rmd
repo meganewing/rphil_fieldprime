@@ -98,7 +98,7 @@ parse_time_hr <- function(path) {
 
 parse_plate_id <- function(path) {
   hit <- str_match(basename(path),
-    "(?i)^(WC-[A-Z]+[0-9]+-40)-T[0-9]+(?:\\.[0-9]+)?\\.txt$")
+    "(?i)^(WC-[A-Z]+[0-9]+-35)-T[0-9]+(?:\\.[0-9]+)?\\.txt$")
   id <- hit[, 2]
   ifelse(is.na(id), "unknown", id)
 }
@@ -200,7 +200,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 plate_files <- list.files(
   data_dir,
-  pattern = "^WC-[A-Z]+[0-9]+-40-T[0-9]+(?:\\.[0-9]+)?\\.txt$",
+  pattern = "^WC-[A-Z]+[0-9]+-35-T[0-9]+(?:\\.[0-9]+)?\\.txt$",
   full.names = TRUE
 )
 

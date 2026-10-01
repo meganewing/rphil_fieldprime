@@ -1,5 +1,5 @@
 ---
-title: APC cockle resazurin analysis
+title: WC cockle resazurin analysis
 author: "Sam White"
 date: '2026'
 output:
@@ -16,8 +16,8 @@ editor_options:
     wrap: 72
 ---
 
-This script analyzes resazurin assays for APC cockle spat. Treatments
-are decoded as a 2x2 factorial: Immune_Priming (Yes/No) x Heat_Priming
+This script analyzes resazurin assays for WC cockle spat. Treatments are
+decoded as a 2x2 factorial: Immune_Priming (Yes/No) x Heat_Priming
 (Yes/No), derived from treatment codes CC, EE, CP, EP. Metadata is
 provided via layout.csv.
 
@@ -56,12 +56,12 @@ running.
 
 ```{r config}
 # ── INPUT ─────────────────────────────────────────────────────────────────────
-# Folder containing APC plate .txt files and layout.csv
-data_dir <- "data/resassay_SP1/AP_cockle_final"
+# Folder containing WC plate .txt files and layout.csv
+data_dir <- "data/resassay_SP1/WC_manila_res_final"
 
 # ── OUTPUT ────────────────────────────────────────────────────────────────────
 # Directory for saved figures
-fig_dir  <- "output/AP_cockles_SP1_pink/figures/ah2"
+fig_dir  <- "output/WC_manila_SP1_pink/figures/ah2"
 
 # Create output directories if they don't already exist
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
@@ -95,10 +95,10 @@ trt_colours <- c(
 ## Load data
 
 ```{r load-plates}
-# Match only APC-***-##-T#.txt files; excludes layout.csv and other files
+# Match only WC-***-##-T#.txt files; excludes layout.csv and other files
 file_list <- list.files(
   path = data_dir,
-  pattern = "^APC-[A-Z]+[0-9]+-[0-9]+-T[0-9]+\\.txt$",
+  pattern = "^WC-[A-Z]+[0-9]+-[0-9]+-T[0-9]+\\.txt$",
   full.names = TRUE
 )
 
@@ -112,7 +112,7 @@ data_list <- list()  # accumulate parsed data frames here
 for (file in file_list) {
   if (!is.character(file)) next  # skip non-character entries (safety check)
 
-  file_name <- file_path_sans_ext(basename(file))  # e.g. "APC-CC1-26-T0"
+  file_name <- file_path_sans_ext(basename(file))  # e.g. "WC-CC1-26-T0"
 
   # Scan for the "Results" section header in the plate reader export
   lines       <- readLines(file, warn = FALSE)
@@ -141,7 +141,7 @@ for (file in file_list) {
       Value      = suppressWarnings(as.numeric(Value)),  # coerce to numeric; non-numeric -> NA
       plate_well = paste0(toupper(Row), Column),         # well ID e.g. "A2", "B3"
       FileName   = file_name,
-      plate_ID   = str_remove(file_name, "-T[0-9]+$"),  # strip timepoint suffix e.g. "APC-CC1-26"
+      plate_ID   = str_remove(file_name, "-T[0-9]+$"),  # strip timepoint suffix e.g. "WC-CC1-26"
       timepoint  = str_extract(file_name, "T([0-9]+)$") %>%
         str_remove("T") %>% as.numeric()                # extract numeric timepoint
     ) %>%
@@ -561,6 +561,33 @@ plot1d <- full_data %>%
 plot1d
 
 ggsave(plot1d, filename = file.path(fig_dir, "metabolism_temperature_by_treatment.png"), width = 8, height = 5)
+```
+
+```{r}
+# Set which assay temperature to display
+focal_temp <- 40  # change to 25, 30, 35, or 40
+
+plot1d_single <- full_data %>%
+  filter(temperature == focal_temp) %>%
+  mutate(hour = as.numeric(timepoint) * 0.667) %>% # <- note to change multiplier based on how many timepoints (6 = *0.667, 8 = *.05)
+  ggplot(aes(x = hour, y = value.mm,
+             color = Treatment, fill = Treatment, group = Treatment)) +
+  geom_point(alpha = 0.5) +
+  stat_smooth(method = "loess") +
+  scale_colour_manual(values = trt_colours, name = "Priming Treatment") +
+  scale_fill_manual(values = trt_colours, name = "Priming Treatment") +
+  scale_x_continuous(breaks = c(0, 1, 2, 3, 4),
+                     labels = c(0, 1, 2, 3, 4)) +
+  labs(title = paste0("Assay Temperature: ", focal_temp, "°C"),
+       x = "Hour", y = "Metabolic Rate") +
+  theme_classic(base_size = 16)
+
+plot1d_single
+
+ggsave(plot1d_single,
+       filename = file.path(fig_dir, paste0("metabolism_temperature_", focal_temp, "C.png")),
+       width = 8, height = 5)
+
 ```
 
 # Survival
