@@ -1,0 +1,430 @@
+---
+title: "Transform Mortality Data"
+output: html_document
+---
+
+# Configuration
+
+Edit the chunk below before knitting (or sourcing interactively). All other chunks run automatically with no further edits required.
+
+```{r config}
+# =============================================================================
+# USER CONFIGURATION — edit these values for each new dataset
+# =============================================================================
+
+# Plate size: number of wells (e.g. 12 or 24)
+PLATE_SIZE <- 12
+
+# Path to the raw plate-data CSV
+INPUT_FILE <- "../data/survivalassay_SP2/AP_cockles-26C.csv"
+
+# Path to the replicate metadata CSV
+# Expected columns: PlateID, well, Field_Replicate, Silo_Replicate
+# Use "blank" (any case) in Field_Replicate / Silo_Replicate to mark blanks.
+REPLICATE_META_FILE <- "../data/survivalassay_SP2/APC-T2-replicate_tracking.csv"
+
+# Output file path (set to NULL to auto-generate from INPUT_FILE name)
+OUTPUT_FILE <- "../data/survivalassay_SP2/AP_cockles-26C_mortality.csv"
+
+# Assay temperature label, appended to PlateID in output (e.g. "26C", "40C")
+TEMPERATURE <- "26C"
+
+# Site code used in the raw plate data (may differ from the metadata file)
+# e.g. raw file uses "AP", metadata file uses "APC"
+SITE_CODE <- "AP"
+
+# Treatment metadata: treatment code -> c(Immune_Priming, Heat_Priming)
+TREATMENT_INFO <- list(
+  "CC" = c("No",  "No"),
+  "EE" = c("No",  "Yes"),
+  "CP" = c("Yes", "No"),
+  "EP" = c("Yes", "Yes")
+)
+```
+
+------------------------------------------------------------------------
+
+# Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = TRUE, warning = TRUE)
+```
+
+```{r libraries}
+# Base R only — no external packages required
+```
+
+------------------------------------------------------------------------
+
+# Helper Functions
+
+```{r helpers}
+# ---------------------------------------------------------------------------
+# parse_plate_id()
+# Parses a plate ID string such as "AP-CC1-26" or "APC-EE3-40" into its
+# component parts.  Returns a named list.
+# ---------------------------------------------------------------------------
+parse_plate_id <- function(plate_id) {
+  m <- regmatches(
+    plate_id,
+    regexec("^([^-]+)-([A-Z]+)(\\d+)-(\\d+)$", plate_id)
+  )[[1]]
+  if (length(m) == 0) stop(paste("Cannot parse plate ID:", plate_id))
+  list(
+    site           = m[2],
+    treatment_code = m[3],
+    replicate      = as.integer(m[4]),
+    assay_temp     = paste0(m[5], "C")
+  )
+}
+
+# ---------------------------------------------------------------------------
+# load_replicate_meta()
+# Reads the replicate metadata file and returns a lookup list keyed by
+# "<PlateID>_<well>" (e.g. "APC-EE4-26_A2").
+#
+# The metadata PlateID may use a different site code than the raw data
+# (e.g. "APC" vs "AP").  meta_site_code is extracted automatically from
+# the first non-header row of the metadata file; raw_site_code is the
+# SITE_CODE set in config.  When they differ, keys are stored under BOTH
+# the metadata site code AND the raw site code so lookups always succeed.
+# ---------------------------------------------------------------------------
+load_replicate_meta <- function(meta_file, raw_site_code) {
+  meta <- read.csv(
+    meta_file,
+    header          = TRUE,
+    stringsAsFactors = FALSE,
+    strip.white     = TRUE
+  )
+
+  required_cols <- c("PlateID", "well", "Field_Replicate", "Silo_Replicate")
+  missing <- setdiff(required_cols, colnames(meta))
+  if (length(missing) > 0) {
+    stop(paste("Replicate metadata file is missing columns:", paste(missing, collapse = ", ")))
+  }
+
+  # Detect site code used in the metadata file
+  meta_site_code <- sub("-.*$", "", meta$PlateID[1])
+
+  lookup <- list()
+  for (i in seq_len(nrow(meta))) {
+    pid  <- meta$PlateID[i]
+    well <- meta$well[i]
+    fr   <- meta$Field_Replicate[i]
+    sr   <- meta$Silo_Replicate[i]
+
+    entry <- list(
+      Field_Replicate = fr,
+      Silo_Replicate  = sr,
+      is_blank        = tolower(fr) == "blank" | tolower(sr) == "blank"
+    )
+
+    key_meta <- paste0(pid, "_", well)
+    lookup[[key_meta]] <- entry
+
+    # Also store under raw site code if it differs
+    if (!is.na(raw_site_code) && meta_site_code != raw_site_code) {
+      pid_raw  <- sub(paste0("^", meta_site_code), raw_site_code, pid)
+      key_raw  <- paste0(pid_raw, "_", well)
+      lookup[[key_raw]] <- entry
+    }
+  }
+
+  message(sprintf(
+    "Loaded %d well entries from metadata (metadata site: %s, raw data site: %s)",
+    nrow(meta), meta_site_code, raw_site_code
+  ))
+  lookup
+}
+
+# ---------------------------------------------------------------------------
+# get_plate_dimensions()
+# Returns the number of rows and columns for a given plate size.
+# Extend this list if you use other formats.
+# ---------------------------------------------------------------------------
+get_plate_dimensions <- function(plate_size) {
+  dims <- list(
+    "6"  = c(rows = 2, cols = 3),
+    "12" = c(rows = 3, cols = 4),
+    "24" = c(rows = 4, cols = 6),
+    "48" = c(rows = 6, cols = 8),
+    "96" = c(rows = 8, cols = 12)
+  )
+  key <- as.character(plate_size)
+  if (!key %in% names(dims)) {
+    stop(paste("Unsupported plate size:", plate_size,
+               "— add it to get_plate_dimensions() if needed."))
+  }
+  dims[[key]]
+}
+```
+
+------------------------------------------------------------------------
+
+# Main Transform
+
+```{r transform}
+transform_mortality <- function(
+  input_file,
+  meta_file,
+  output_file   = NULL,
+  site_code     = SITE_CODE,
+  temperature   = TEMPERATURE,
+  plate_size    = PLATE_SIZE,
+  treatment_info = TREATMENT_INFO
+) {
+
+  # ── 0. Load replicate metadata ──────────────────────────────────────────
+  rep_lookup <- load_replicate_meta(meta_file, site_code)
+
+  # ── 1. Read raw plate data as a character matrix ─────────────────────────
+  raw <- read.csv(
+    input_file,
+    header          = FALSE,
+    colClasses      = "character",
+    stringsAsFactors = FALSE,
+    fill            = TRUE,
+    check.names     = FALSE
+  )
+  mat <- as.matrix(raw)
+  mat[is.na(mat)] <- ""
+  mat <- trimws(mat)
+
+  nrows <- nrow(mat)
+  ncols <- ncol(mat)
+
+  # ── 2. Plate dimensions ──────────────────────────────────────────────────
+  dims     <- get_plate_dimensions(plate_size)
+  n_rows   <- dims["rows"]   # number of row letters (A, B, C, …)
+  n_cols   <- dims["cols"]   # number of well columns (1, 2, 3, …)
+  row_labels <- LETTERS[seq_len(n_rows)]
+
+  # ── 3. Find the first plate-header row ───────────────────────────────────
+  # A plate ID looks like "AP-CC1-26" or "APC-EE3-40"
+  plate_pattern <- "^[A-Za-z]+-[A-Z]+[0-9]+-[0-9]+$"
+
+  first_plate_row <- NA
+  for (i in seq_len(nrows)) {
+    if (grepl(plate_pattern, mat[i, 1])) {
+      first_plate_row <- i
+      break
+    }
+  }
+  if (is.na(first_plate_row)) {
+    stop("Could not find any plate ID row in the file.")
+  }
+
+  # ── 4. Discover all plate column offsets from that header row ────────────
+  header_row <- mat[first_plate_row, ]
+  plates <- list()
+  for (j in seq_len(ncols)) {
+    if (grepl(plate_pattern, header_row[j])) {
+      plates <- c(plates, list(list(plate_id = header_row[j], col = j)))
+    }
+  }
+  message(sprintf(
+    "Found %d plates: %s",
+    length(plates),
+    paste(sapply(plates, `[[`, "plate_id"), collapse = ", ")
+  ))
+
+  # ── 5. Discover all timepoint blocks ─────────────────────────────────────
+  hr_pattern <- "^[0-9]+\\.?[0-9]*HR$"
+  timepoint_blocks <- list()
+  for (i in seq_len(nrows)) {
+    val <- mat[i, 1]
+    if (grepl(hr_pattern, val, ignore.case = TRUE)) {
+      plate_hdr_row <- i + 1
+      if (plate_hdr_row <= nrows) {
+        timepoint_blocks <- c(
+          timepoint_blocks,
+          list(list(hr = val, plate_hdr_row = plate_hdr_row))
+        )
+      }
+    }
+  }
+
+  # Keep only first occurrence of each HR label
+  seen_hrs      <- character(0)
+  unique_blocks <- list()
+  for (blk in timepoint_blocks) {
+    hr_upper <- toupper(blk$hr)
+    if (!hr_upper %in% seen_hrs) {
+      seen_hrs      <- c(seen_hrs, hr_upper)
+      unique_blocks <- c(unique_blocks, list(blk))
+    }
+  }
+  tp_cols <- sapply(unique_blocks, `[[`, "hr")
+  message(sprintf(
+    "Found %d timepoints: %s",
+    length(tp_cols),
+    paste(tp_cols, collapse = ", ")
+  ))
+
+  # ── 6. Build output records ──────────────────────────────────────────────
+  meta_col_names <- c(
+    "PlateID_well", "Silo_Replicate", "Field_Replicate",
+    "Assay_Replicate", "Immune_Priming", "Heat_Priming", "Assay_Temp"
+  )
+  records <- list()
+
+  for (pl in plates) {
+    plate_id  <- pl$plate_id
+    plate_col <- pl$col
+
+    parsed <- tryCatch(
+      parse_plate_id(plate_id),
+      error = function(e) { warning(e$message); NULL }
+    )
+    if (is.null(parsed)) next
+
+    tx_info <- treatment_info[[parsed$treatment_code]]
+    if (is.null(tx_info)) {
+      warning(paste("Unknown treatment code:", parsed$treatment_code, "— using 'Unknown'"))
+      tx_info <- c("Unknown", "Unknown")
+    }
+
+    # Discover non-blank well columns from metadata for this plate
+    # Well columns in the raw data are offset from the plate ID column:
+    # col 1 = well col 1 (may be blank), col 2 = well col 2, …
+    # We read up to n_cols columns rightward.
+    get_data_cols <- function(plate_col) {
+      result <- list()
+      for (offset in seq_len(n_cols)) {
+        abs_col  <- plate_col + offset
+        if (abs_col > ncols) break
+        col_num  <- mat[first_plate_row + 1, abs_col]   # numeric column label in data block
+        if (col_num == "") next
+        result <- c(result, list(list(col_num = col_num, col = abs_col)))
+      }
+      result
+    }
+
+    # In the raw data, timepoint blocks repeat the plate header row; we use
+    # that row's column labels (1, 2, 3, …) to build the well key for lookup.
+    # We discover the column mapping once from the first timepoint block's
+    # header row.
+    col_map <- list()  # col_num_label -> matrix column index
+    for (blk in unique_blocks[1]) {
+      hdr <- mat[blk$plate_hdr_row, ]
+      for (offset in seq_len(n_cols)) {
+        abs_col  <- plate_col + offset
+        if (abs_col > ncols) break
+        label <- hdr[abs_col]
+        if (label != "") col_map[[label]] <- abs_col
+      }
+      break
+    }
+
+    for (row_idx in seq_along(row_labels)) {
+      row_label <- row_labels[row_idx]
+
+      for (col_label in names(col_map)) {
+        abs_col <- col_map[[col_label]]
+        well_id <- paste0(row_label, col_label)   # e.g. "A1", "B3"
+
+        # Look up replicate metadata
+        # Try the plate_id as-is first (same site code), then fall back to
+        # the alternate site code version (both were registered in load_replicate_meta)
+        lookup_key <- paste0(plate_id, "_", well_id)
+        meta_entry <- rep_lookup[[lookup_key]]
+
+        if (is.null(meta_entry)) {
+          # Well not found in metadata — skip with a warning
+          warning(paste("Well not found in replicate metadata, skipping:", lookup_key))
+          next
+        }
+
+        if (meta_entry$is_blank) next   # skip blank wells silently
+
+        cup_id <- paste0(plate_id, "_", well_id)
+
+        rec <- list(
+          "PlateID_well"    = cup_id,
+          "Silo_Replicate"  = meta_entry$Silo_Replicate,
+          "Field_Replicate" = meta_entry$Field_Replicate,
+          "Assay_Replicate" = plate_id,
+          "Immune_Priming"  = tx_info[1],
+          "Heat_Priming"    = tx_info[2],
+          "Assay_Temp"      = parsed$assay_temp
+        )
+
+        # Read mortality values for each timepoint
+        for (blk in unique_blocks) {
+          data_row <- blk$plate_hdr_row + row_idx  # +1 for plate header, then row_idx rows down
+          if (data_row > nrows) {
+            rec[[blk$hr]] <- NA
+            next
+          }
+          cell_val <- mat[data_row, abs_col]
+          if (cell_val == "" || tolower(cell_val) == "blank") {
+            rec[[blk$hr]] <- NA
+          } else {
+            num <- suppressWarnings(as.numeric(cell_val))
+            rec[[blk$hr]] <- if (!is.na(num)) as.integer(num) else cell_val
+          }
+        }
+
+        records <- c(records, list(rec))
+      }
+    }
+  }
+
+  if (length(records) == 0) {
+    stop("No records were extracted. Check your metadata file and plate ID patterns.")
+  }
+
+  # ── 7. Assemble data frame ───────────────────────────────────────────────
+  out_df <- do.call(
+    rbind,
+    lapply(records, as.data.frame, stringsAsFactors = FALSE, check.names = FALSE)
+  )
+  out_df <- out_df[, c(meta_col_names, tp_cols), drop = FALSE]
+
+  # Drop rows where ALL timepoint columns are NA
+  all_na <- apply(out_df[, tp_cols, drop = FALSE], 1, function(r) all(is.na(r)))
+  out_df <- out_df[!all_na, , drop = FALSE]
+
+  # ── 8. Write output ──────────────────────────────────────────────────────
+  if (is.null(output_file)) {
+    base        <- tools::file_path_sans_ext(basename(input_file))
+    output_file <- file.path(dirname(input_file), paste0(base, "_mortality.csv"))
+  }
+
+  write.csv(out_df, output_file, row.names = FALSE, quote = TRUE)
+  message(sprintf("\nSaved %d rows to: %s", nrow(out_df), output_file))
+  invisible(out_df)
+}
+```
+
+------------------------------------------------------------------------
+
+# Run
+
+```{r run}
+result <- transform_mortality(
+  input_file     = INPUT_FILE,
+  meta_file      = REPLICATE_META_FILE,
+  output_file    = OUTPUT_FILE,
+  site_code      = SITE_CODE,
+  temperature    = TEMPERATURE,
+  plate_size     = PLATE_SIZE,
+  treatment_info = TREATMENT_INFO
+)
+
+cat("\nPreview of output (first 10 rows):\n")
+print(head(result, 10))
+```
+
+------------------------------------------------------------------------
+
+# Summary
+
+```{r summary}
+cat(sprintf("Total wells processed: %d\n", nrow(result)))
+cat(sprintf("Plates:     %s\n", paste(unique(result$Assay_Replicate), collapse = ", ")))
+cat(sprintf("Timepoints: %s\n", paste(names(result)[8:ncol(result)], collapse = ", ")))
+cat(sprintf("Treatments: %s\n",
+            paste(unique(paste0(result$Immune_Priming, "/", result$Heat_Priming)),
+                  collapse = ", ")))
+```
